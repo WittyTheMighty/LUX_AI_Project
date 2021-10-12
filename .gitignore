@@ -3,6 +3,24 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Personal agent
+personal/
+
+# Log
+log.txt
+match_errors.txt
+
+# Models
+.model
+models/
+*.zip
+
+# Replays
+replays
+
+# Tenserboard logs
+lux_tensorboard/
+
 # C extensions
 *.so
 
@@ -101,15 +119,6 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -127,3 +136,5 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+.idea/
