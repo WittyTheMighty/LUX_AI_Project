@@ -44,10 +44,13 @@ def get_command_line_arguments():
     parser.add_argument('--gamma', help='Gamma', type=float, default=0.995)
     parser.add_argument('--gae_lambda', help='GAE Lambda', type=float, default=0.95)
     parser.add_argument('--batch_size', help='batch_size', type=int, default=2048)  # 64
-    parser.add_argument('--step_count', help='Total number of steps to train', type=int, default=10000000)
-    parser.add_argument('--n_steps', help='Number of experiences to gather before each learning period', type=int, default=2048)
+    parser.add_argument('--step_count', help='Total number of steps to train', type=int, default=100000000)
+    parser.add_argument('--n_steps', help='Number of experiences to gather before each learning period', type=int,
+                        default=2048)
     parser.add_argument('--path', help='Path to a checkpoint to load to resume training', type=str, default=None)
     parser.add_argument('--n_envs', help='Number of parallel environments to use in training', type=int, default=1)
+    parser.add_argument('--opponent', help='Select a model to load as an opponent for the training.', type=str,
+                        default=None)
     args = parser.parse_args()
 
     return args
@@ -63,8 +66,18 @@ def train(args):
     # Run a training job
     configs = LuxMatchConfigs_Default
 
-    # Create a default opponent agent
-    opponent = Agent()
+    opponent = None
+    if args.opponent is not None:
+        try:
+            opp_model = PPO.load(args.opponent)
+            opponent = AgentPolicy(mode='inference', model=opp_model)
+        except:
+            print('Could not load given opponent model, uses default instead...')
+            opponent = Agent()
+    else:
+        opponent = Agent()
+    # # Create a default opponent agent
+    # opponent = Agent()
 
     # Create a RL agent in training mode
     player = AgentPolicy(mode="train")
@@ -79,7 +92,7 @@ def train(args):
         env = SubprocVecEnv([make_env(LuxEnvironment(configs=configs,
                                                      learning_agent=AgentPolicy(mode="train"),
                                                      opponent_agent=opponent), i) for i in range(args.n_envs)])
-    
+
     run_id = args.id
     print("Run id %s" % run_id)
 
@@ -104,40 +117,38 @@ def train(args):
                     n_steps=args.n_steps
                     )
 
-    
-    
     callbacks = []
 
     # Save a checkpoint and 5 match replay files every 100K steps
     player_replay = AgentPolicy(mode="inference", model=model)
     callbacks.append(
         SaveReplayAndModelCallback(
-                                save_freq=100000,
-                                save_path='./models/',
-                                name_prefix=f'model{run_id}',
-                                replay_env=LuxEnvironment(
-                                                configs=configs,
-                                                learning_agent=player_replay,
-                                                opponent_agent=Agent()
-                                ),
-                                replay_num_episodes=5
-                            )
+            save_freq=1000000,  ## ADDED x10
+            save_path='./models/',
+            name_prefix=f'model{run_id}',
+            replay_env=LuxEnvironment(
+                configs=configs,
+                learning_agent=player_replay,
+                opponent_agent=Agent()
+            ),
+            replay_num_episodes=5
+        )
     )
-    
+
     # Since reward metrics don't work for multi-environment setups, we add an evaluation logger
     # for metrics.
     if args.n_envs > 1:
         # An evaluation environment is needed to measure multi-env setups. Use a fixed 4 envs.
         env_eval = SubprocVecEnv([make_env(LuxEnvironment(configs=configs,
-                                                     learning_agent=AgentPolicy(mode="train"),
-                                                     opponent_agent=opponent), i) for i in range(4)])
+                                                          learning_agent=AgentPolicy(mode="train"),
+                                                          opponent_agent=opponent), i) for i in range(4)])
 
         callbacks.append(
             EvalCallback(env_eval, best_model_save_path=f'./logs_{run_id}/',
-                             log_path=f'./logs_{run_id}/',
-                             eval_freq=args.n_steps*2, # Run it every 2 training iterations
-                             n_eval_episodes=30, # Run 30 games
-                             deterministic=False, render=False)
+                         log_path=f'./logs_{run_id}/',
+                         eval_freq=args.n_steps * 2,  # Run it every 2 training iterations
+                         n_eval_episodes=30,  # Run 30 games
+                         deterministic=False, render=False)
         )
 
     print("Training model...")
@@ -187,15 +198,19 @@ def train(args):
 
 
 if __name__ == "__main__":
-    if sys.version_info < (3,7) or sys.version_info >= (3,8):
+    if sys.version_info < (3, 7) or sys.version_info >= (3, 8):
         os.system("")
+
+
         class style():
             YELLOW = '\033[93m'
+
+
         version = str(sys.version_info.major) + "." + str(sys.version_info.minor)
         message = f'/!\ Warning, python{version} detected, you will need to use python3.7 to submit to kaggle.'
         message = style.YELLOW + message
         print(message)
-    
+
     # Get the command line arguments
     local_args = get_command_line_arguments()
 

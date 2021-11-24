@@ -545,13 +545,13 @@ class AgentPolicy(AgentWithModel):
             self.is_last_turn = True
             rewards["rew/r_city_tiles_end"] = city_tile_count
 
-
+            '''
             # Example of a game win/loss reward instead
             if game.get_winning_team() == self.team:
-                rewards["rew/r_game_win"] = 10.0 # Win
+                rewards["rew/r_game_win"] = 100.0 # Win
             else:
-                rewards["rew/r_game_win"] = -10.0 # Loss
-
+                rewards["rew/r_game_win"] = -100.0 # Loss
+            '''
         
         reward = 0
         for name, value in rewards.items():
