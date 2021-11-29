@@ -1,12 +1,14 @@
 import os
 
 import numpy as np
-import tensorflow as tf
 from matplotlib import pyplot as plt
-from tensorflow import keras
-from tensorflow.keras import Model
-from tensorflow.keras import layers
+
 import gym
+import scipy.signal
+import time
+import datetime as dt
+from sklearn.metrics import mean_squared_error
+
 
 # Adaptation from https://github.com/nikhilbarhate99/PPO-PyTorch/blob/master/PPO.py
 import torch
@@ -294,7 +296,7 @@ if __name__ == '__main__':
         "clip_param": 0.2,
     }
     subgoal_shape = 64
-    ppo = PPO(env.observation_space.shape[0], env.action_space.n, 0.001, 0.002, 0.99, 10, 0.2, False)
+    ppo = PPO(env.observation_space.shape[0]+subgoal_shape, env.action_space.n, 0.001, 0.002, 0.99, 10, 0.2, False)
     # To store reward history of each episode
     ep_reward_list = []
     # To store average reward history of last few episodes
@@ -312,7 +314,7 @@ if __name__ == '__main__':
             # Uncomment this to see the Actor in action
             # But not in a python notebook.
 
-            action = ppo.policy(prev_state)
+            action = ppo.policy(torch.concat(prev_state))
             # Recieve state and reward from environment.
             state, reward, done, info = env.step(action)
             ppo.record((reward, done))

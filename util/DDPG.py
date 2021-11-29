@@ -1,25 +1,24 @@
 import gym
-import keras
 import tensorflow as tf
 from tensorflow.keras import layers
 import numpy as np
 import matplotlib.pyplot as plt
-# import frozen_lake as fl
+import tensorflow_probability as tfp
 
 
+# inspired from https://github.com/lubiluk/ddpg
 class DDPG:
-    def __init__(self,config):
+    def __init__(self, config):
 
-        self.obs_shape = config['obs_shape']
-        print("Size of State Space ->  {}".format(self.obs_shape[0]))
-        self.subgoal_shape = config['subgoal_shape']
-        print(self.subgoal_shape[0])
-        print("Size of Subgoal Space ->  {}".format(self.subgoal_shape[0]))
+        self.state_dim = config['state_dim']
+        print("Size of State Space ->  {}".format(self.state_dim))
+        self.state_n = config['state_n']
 
-        self.upper_bound = config['subgoal_upper_bound']
-        self.lower_bound = config['subgoal_lower_bound']
+        self.subgoal_dim = config['subgoal_dim']
+        print("Size of Subgoal Space ->  {}".format(self.subgoal_dim))
+        self.subgoal_n = config['subgoal_n']
 
-        self.std_dev = 0.2
+        self.std_dev = config['std_dev'] # 0.2
         self.ou_noise = OUActionNoise(mean=np.zeros(1), std_deviation=float(self.std_dev) * np.ones(1))
 
         self.actor_model = self.get_actor()
@@ -33,61 +32,61 @@ class DDPG:
         self.target_critic.set_weights(self.critic_model.get_weights())
 
         # Learning rate for actor-critic models
-        self.critic_lr = 0.002
-        self.actor_lr = 0.001
+        self.critic_lr = config['critic_lr'] # 0.002
+        self.actor_lr = config['actor_lr'] #0.001
 
         self.critic_optimizer = tf.keras.optimizers.Adam(self.critic_lr)
         self.actor_optimizer = tf.keras.optimizers.Adam(self.actor_lr)
 
         # Discount factor for future rewards
-        self.gamma = 0.99
+        self.gamma = config['gamma']
         # Used to update target networks
-        self.tau = 0.005
+        self.tau = config['tau']
 
-        self.buffer = BufferH(self, self.obs_shape[0], self.subgoal_shape[0], 50000, 64)
+        self.buffer = BufferH(self, self.state_dim, self.subgoal_n, 50000, 64)
 
     def policy(self, state):
+        state = tf.expand_dims(tf.convert_to_tensor(state), 0)
         noise_object = self.ou_noise
-        sampled_subgoal = tf.squeeze(self.actor_model(state))
-        noise = noise_object()
+        prob = tf.squeeze(self.actor_model(state))
+        # noise = noise_object()
         # Adding noise to action
-        sampled_subgoal = sampled_subgoal.numpy() + noise
+        # sampled_subgoal = sampled_subgoal.numpy() + noise
+        prob = prob.numpy()
+        #print(prob)
+        # prob += noise_object()
 
+        dist = tfp.distributions.Categorical(probs=prob, dtype=tf.float32)
+        subgoal = dist.sample()
         # We make sure action is within bounds
-        legal_subgoal = np.clip(sampled_subgoal, self.lower_bound, self.upper_bound)
+        # legal_subgoal = np.clip(sampled_subgoal, self.lower_bound, self.upper_bound)
 
-        return [np.squeeze(legal_subgoal)]
-
-    def get_lstm(self):
-        model = keras.Sequential()
-        model.add(layers.LSTM(1, input_shape=(1, self.obs_shape[0],)))
-        model.add(layers.Dense(self.obs_shape[0]))
-        return model
+        return subgoal.numpy()
 
     def get_actor(self):
         # Initialize weights between -3e-3 and 3-e3
         last_init = tf.random_uniform_initializer(minval=-0.003, maxval=0.003)
 
-        inputs = layers.Input(shape=(self.obs_shape[0],))
-        out = layers.Reshape((1, self.obs_shape[0],))(inputs)
+        inputs = layers.Input(shape=(self.state_dim,))
+        out = layers.Reshape((1, self.state_dim,))(inputs)
         out = layers.LSTM(4)(out)
         out = layers.Dense(256, activation="relu")(out)
         out = layers.Dense(256, activation="relu")(out)
-        outputs = layers.Dense(1, activation="tanh", kernel_initializer=last_init)(out)
+        outputs = layers.Dense(self.subgoal_n, activation="softmax", kernel_initializer=last_init)(out)
 
         # Our upper bound is 2.0 for Pendulum.
-        outputs = outputs * self.upper_bound
+        # outputs = outputs * self.upper_bound
         model = tf.keras.Model(inputs, outputs)
         return model
 
     def get_critic(self):
         # State as input
-        state_input = layers.Input(shape=(self.obs_shape[0]))
+        state_input = layers.Input(shape=(self.state_dim))
         state_out = layers.Dense(16, activation="relu")(state_input)
         state_out = layers.Dense(32, activation="relu")(state_out)
 
         # Action as input
-        action_input = layers.Input(shape=(self.subgoal_shape[0]))
+        action_input = layers.Input(shape=(self.subgoal_n))
         action_out = layers.Dense(32, activation="relu")(action_input)
 
         # Both are passed through seperate layer before concatenating
@@ -151,12 +150,22 @@ class BufferH:
 
         self.ddpg = ddpg
 
+        self.num_states = num_states
+        self.num_subgoal = num_subgoal
+
         # Instead of list of tuples as the exp.replay concept go
         # We use different np.arrays for each tuple element
         self.state_buffer = np.zeros((self.buffer_capacity, num_states))
         self.subgoal_buffer = np.zeros((self.buffer_capacity, num_subgoal))
         self.reward_buffer = np.zeros((self.buffer_capacity, 1))
         self.next_state_buffer = np.zeros((self.buffer_capacity, num_states))
+
+    def clear(self):
+        self.buffer_counter = 0
+        self.state_buffer = np.zeros((self.buffer_capacity, self.num_states))
+        self.subgoal_buffer = np.zeros((self.buffer_capacity, self.num_subgoal))
+        self.reward_buffer = np.zeros((self.buffer_capacity, 1))
+        self.next_state_buffer = np.zeros((self.buffer_capacity, self.num_states))
 
     # Takes (s,g,r,s') obervation tuple as input
     def record(self, obs_tuple):
@@ -231,15 +240,26 @@ def update_target(target_weights, weights, tau):
 
 
 if __name__ == '__main__':
-    problem = 'Pendulum-v0'
+    problem = 'Taxi-v3'
     env = gym.make(problem)
-    ddpg = DDPG(env.observation_space.shape, env.action_space.shape,env.action_space.high[0], env.action_space.low[0])
+    config = {
+        'state_dim':1, # env.observation_space.shape[0],
+        'state_n' : env.observation_space.n,
+        'subgoal_dim': 1, #env.action_space.shape[0],
+        'subgoal_n' : env.action_space.n,
+        'std_dev':0.2,
+        'critic_lr': 0.002,
+        'actor_lr': 0.001,
+        'gamma' : 0.99,
+        'tau': 0.005,
+    }
+    ddpg = DDPG(config)
     # To store reward history of each episode
     ep_reward_list = []
     # To store average reward history of last few episodes
     avg_reward_list = []
 
-    total_episodes = 100
+    total_episodes = 1000
 
     # Takes about 4 min to train
     for ep in range(total_episodes):
@@ -252,23 +272,21 @@ if __name__ == '__main__':
             # But not in a python notebook.
             # env.render()
 
-            tf_prev_state = tf.expand_dims(tf.convert_to_tensor(prev_state), 0)
-
-            subgoal = ddpg.policy(tf_prev_state)
+            subgoal = ddpg.policy(prev_state)
             # Recieve state and reward from environment.
             state, reward, done, info = env.step(subgoal)
-
+            # print(state, reward,done)
             ddpg.record(state, subgoal, reward, prev_state)
             episodic_reward += reward
 
-            ddpg.learn()
+
 
             # End this episode when `done` is True
             if done:
                 break
 
             prev_state = state
-
+        ddpg.learn()
         ep_reward_list.append(episodic_reward)
 
         # Mean of last 40 episodes
