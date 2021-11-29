@@ -4,7 +4,7 @@ from stable_baselines3 import PPO
 import frozen_lake as fl
 
 if __name__ == '__main__':
-    env = fl.FrozenLakeEnv(map_name="4x4")
+    env = gym.make('Taxi-v3')
     model = PPO('MlpPolicy', env, verbose=1)
     # model = PPO.load('./model.zip')
     # model.set_env(env)

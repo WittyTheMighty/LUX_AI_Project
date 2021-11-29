@@ -225,7 +225,7 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
             reward = 20.0
             done = True
         elif newletter == b'H':
-            reward = -10
+            reward = -100
             done = True
         else:
             reward = -1.0

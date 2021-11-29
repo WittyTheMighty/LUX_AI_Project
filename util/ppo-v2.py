@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import MultivariateNormal
 from torch.distributions import Categorical
+from Lux_Project_Env import frozen_lake
 
 ################################## set device ##################################
 
@@ -45,6 +46,16 @@ class RolloutBuffer:
         del self.logprobs[:]
         del self.rewards[:]
         del self.is_terminals[:]
+
+
+class PrintLayer(nn.Module):
+    def __init__(self):
+        super(PrintLayer, self).__init__()
+
+    def forward(self, x):
+        # Do your print / debug stuff here
+        print(x)
+        return x
 
 
 class ActorCritic(nn.Module):
@@ -126,6 +137,7 @@ class ActorCritic(nn.Module):
                 action = action.reshape(-1, self.action_dim)
 
         else:
+            state = state.reshape(-1, 1) # transpose state vector into
             action_probs = self.actor(state)
             dist = Categorical(action_probs)
         action_logprobs = dist.log_prob(action)
@@ -137,7 +149,7 @@ class ActorCritic(nn.Module):
 
 class PPO:
     def __init__(self, config):
-
+        print(config)
         self.has_continuous_action_space = config['has_continuous_action_space']
         self.has_continuous_state_space = config['has_continuous_state_space']
 
@@ -153,11 +165,14 @@ class PPO:
             self.action_dim = config['action_dim'].shape[0]
         else:
             self.action_dim = config['action_dim'].n
-
         if self.has_continuous_state_space:
             self.state_dim = config['state_dim'].shape[0]
         else:
-            self.state_dim = config['state_dim'].n
+            if type(config['state_dim']) == gym.spaces.Discrete:
+                self.state_dim = 1
+            else:
+                self.state_dim = config['state_dim'].n
+
         self.policy_ = ActorCritic(self.state_dim, self.action_dim, self.has_continuous_action_space, self.action_std).to(device)
         self.optimizer = torch.optim.Adam([
             {'params': self.policy_.actor.parameters(), 'lr': config['actor_lr']},
@@ -215,7 +230,7 @@ class PPO:
 
         else:
             with torch.no_grad():
-                state = torch.FloatTensor(state).to(device)
+                state = torch.FloatTensor([state]).to(device)
                 action, action_logprob = self.policy_old.act(state)
 
             self.buffer.states.append(state)
@@ -285,19 +300,20 @@ class PPO:
         ppo.buffer.rewards.append(tuple[0])
         ppo.buffer.is_terminals.append(tuple[1])
 
+
 if __name__ == '__main__':
-    problem = 'CartPole-v1'
-    env = gym.make(problem)
+    env = gym.make('Taxi-v3')
+
     config = {
-        'actor_lr': 0.001,
-        'critic_lr': 0.002,
+        'actor_lr': 0.0003,
+        'critic_lr': 0.0005,
         'action_dim': env.action_space,
         'state_dim': env.observation_space,
         "gamma": 0.99,
         "eps_clip": 0.2,
         'K_epochs': 10,
-        'has_continuous_action_space':False,
-        'has_continuous_state_space':True,
+        'has_continuous_action_space': False,
+        'has_continuous_state_space': False,
         'action_std_init':0.6,
     }
     ppo = PPO(config)
@@ -306,7 +322,7 @@ if __name__ == '__main__':
     # To store average reward history of last few episodes
     avg_reward_list = []
 
-    total_episodes = 150
+    total_episodes = 50000
     # Takes about 4 min to train
     for ep in range(total_episodes):
 
@@ -316,7 +332,7 @@ if __name__ == '__main__':
         while True:
             # Uncomment this to see the Actor in action
             # But not in a python notebook.
-
+            # env.render()
             action = ppo.policy(prev_state)
             # Recieve state and reward from environment.
             state, reward, done, info = env.step(action)
@@ -331,12 +347,27 @@ if __name__ == '__main__':
 
         ppo.learn()
         ep_reward_list.append(episodic_reward)
-
         # Mean of last 40 episodes
         avg_reward = np.mean(ep_reward_list[-40:])
         print("Episode * {} * Avg Reward is ==> {}".format(ep, avg_reward))
         avg_reward_list.append(avg_reward)
 
+    prev_state = env.reset()
+    env.render()
+    episodic_reward = 0
+    for _ in range(100):
+        action = ppo.policy(prev_state)
+        # Recieve state and reward from environment.
+        state, reward, done, info = env.step(action)
+        env.render()
+        ppo.record((reward, done))
+        episodic_reward += reward
+
+        # End this episode when `done` is True
+        if done:
+            break
+
+        prev_state = state
     # Plotting graph
     # Episodes versus Avg. Rewards
     plt.plot(avg_reward_list)
