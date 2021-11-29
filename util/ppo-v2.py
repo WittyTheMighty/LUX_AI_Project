@@ -59,10 +59,11 @@ class PrintLayer(nn.Module):
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, has_continuous_action_space, action_std_init):
+    def __init__(self, state_dim, action_dim, has_continuous_action_space,has_continuous_state_space, action_std_init):
         super(ActorCritic, self).__init__()
 
         self.has_continuous_action_space = has_continuous_action_space
+        self.has_continuous_state_space = has_continuous_state_space
 
         if has_continuous_action_space:
             self.action_dim = action_dim
@@ -115,6 +116,8 @@ class ActorCritic(nn.Module):
             cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
             dist = MultivariateNormal(action_mean, cov_mat)
         else:
+            if not self.has_continuous_state_space :
+                state = state.reshape(-1, 1) # transpose state vector into
             action_probs = self.actor(state)
             dist = Categorical(action_probs)
 
@@ -137,7 +140,8 @@ class ActorCritic(nn.Module):
                 action = action.reshape(-1, self.action_dim)
 
         else:
-            state = state.reshape(-1, 1) # transpose state vector into
+            if not self.has_continuous_state_space :
+                state = state.reshape(-1, 1) # transpose state vector into
             action_probs = self.actor(state)
             dist = Categorical(action_probs)
         action_logprobs = dist.log_prob(action)
@@ -161,25 +165,20 @@ class PPO:
         self.K_epochs = config['K_epochs']
 
         self.buffer = RolloutBuffer()
-        if self.has_continuous_action_space:
-            self.action_dim = config['action_dim'].shape[0]
-        else:
-            self.action_dim = config['action_dim'].n
-        if self.has_continuous_state_space:
-            self.state_dim = config['state_dim'].shape[0]
-        else:
-            if type(config['state_dim']) == gym.spaces.Discrete:
-                self.state_dim = 1
-            else:
-                self.state_dim = config['state_dim'].n
 
-        self.policy_ = ActorCritic(self.state_dim, self.action_dim, self.has_continuous_action_space, self.action_std).to(device)
+        self.action_dim = config['action_dim']
+
+        self.state_dim = config['state_dim']
+
+        self.policy_ = ActorCritic(self.state_dim, self.action_dim, self.has_continuous_action_space,
+                                   self.has_continuous_state_space,self.action_std).to(device)
         self.optimizer = torch.optim.Adam([
             {'params': self.policy_.actor.parameters(), 'lr': config['actor_lr']},
             {'params': self.policy_.critic.parameters(), 'lr': config['critic_lr']}
         ])
 
-        self.policy_old = ActorCritic(self.state_dim, self.action_dim, self.has_continuous_action_space, self.action_std).to(device)
+        self.policy_old = ActorCritic(self.state_dim, self.action_dim, self.has_continuous_action_space,
+                                      self.has_continuous_state_space, self.action_std).to(device)
         self.policy_old.load_state_dict(self.policy_.state_dict())
 
         self.MseLoss = nn.MSELoss()
@@ -302,18 +301,18 @@ class PPO:
 
 
 if __name__ == '__main__':
-    env = gym.make('Taxi-v3')
+    env = gym.make('FrozenLake-v1')
 
     config = {
         'actor_lr': 0.0003,
         'critic_lr': 0.0005,
-        'action_dim': env.action_space,
-        'state_dim': env.observation_space,
+        'action_dim': 2,
+        'state_dim': 4,
         "gamma": 0.99,
         "eps_clip": 0.2,
         'K_epochs': 10,
         'has_continuous_action_space': False,
-        'has_continuous_state_space': False,
+        'has_continuous_state_space': True,
         'action_std_init':0.6,
     }
     ppo = PPO(config)
@@ -322,7 +321,7 @@ if __name__ == '__main__':
     # To store average reward history of last few episodes
     avg_reward_list = []
 
-    total_episodes = 50000
+    total_episodes = 500
     # Takes about 4 min to train
     for ep in range(total_episodes):
 
