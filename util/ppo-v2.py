@@ -4,11 +4,6 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 import gym
-import scipy.signal
-import time
-import datetime as dt
-from sklearn.metrics import mean_squared_error
-
 
 # Adaptation from https://github.com/nikhilbarhate99/PPO-PyTorch/blob/master/PPO.py
 import torch
@@ -73,7 +68,7 @@ class ActorCritic(nn.Module):
             )
         else:
             self.actor = nn.Sequential(
-                nn.Linear(state_dim,64),
+                nn.Linear(state_dim, 64),
                 nn.Tanh(),
                 nn.Linear(64, 64),
                 nn.Tanh(),
@@ -141,28 +136,36 @@ class ActorCritic(nn.Module):
 
 
 class PPO:
-    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip,
-                 has_continuous_action_space, action_std_init=0.6):
+    def __init__(self, config):
 
-        self.has_continuous_action_space = has_continuous_action_space
+        self.has_continuous_action_space = config['has_continuous_action_space']
+        self.has_continuous_state_space = config['has_continuous_state_space']
 
-        if has_continuous_action_space:
-            self.action_std = action_std_init
+        self.action_std = config['action_std_init'] # default 0.6
 
-        self.gamma = gamma
-        self.eps_clip = eps_clip
-        self.K_epochs = K_epochs
+
+        self.gamma = config['gamma']
+        self.eps_clip = config['eps_clip']
+        self.K_epochs = config['K_epochs']
 
         self.buffer = RolloutBuffer()
+        if self.has_continuous_action_space:
+            self.action_dim = config['action_dim'].shape[0]
+        else:
+            self.action_dim = config['action_dim'].n
 
-        self.policy = ActorCritic(state_dim, action_dim, has_continuous_action_space, action_std_init).to(device)
+        if self.has_continuous_state_space:
+            self.state_dim = config['state_dim'].shape[0]
+        else:
+            self.state_dim = config['state_dim'].n
+        self.policy_ = ActorCritic(self.state_dim, self.action_dim, self.has_continuous_action_space, self.action_std).to(device)
         self.optimizer = torch.optim.Adam([
-            {'params': self.policy.actor.parameters(), 'lr': lr_actor},
-            {'params': self.policy.critic.parameters(), 'lr': lr_critic}
+            {'params': self.policy_.actor.parameters(), 'lr': config['actor_lr']},
+            {'params': self.policy_.critic.parameters(), 'lr': config['critic_lr']}
         ])
 
-        self.policy_old = ActorCritic(state_dim, action_dim, has_continuous_action_space, action_std_init).to(device)
-        self.policy_old.load_state_dict(self.policy.state_dict())
+        self.policy_old = ActorCritic(self.state_dim, self.action_dim, self.has_continuous_action_space, self.action_std).to(device)
+        self.policy_old.load_state_dict(self.policy_.state_dict())
 
         self.MseLoss = nn.MSELoss()
 
@@ -170,7 +173,7 @@ class PPO:
 
         if self.has_continuous_action_space:
             self.action_std = new_action_std
-            self.policy.set_action_std(new_action_std)
+            self.policy_.set_action_std(new_action_std)
             self.policy_old.set_action_std(new_action_std)
 
         else:
@@ -201,7 +204,7 @@ class PPO:
         if self.has_continuous_action_space:
             with torch.no_grad():
                 state = torch.FloatTensor(state).to(device)
-                state, hn = self.lstm.forward(state)
+                # state, hn = self.lstm.forward(state)
                 action, action_logprob = self.policy_old.act(state)
 
             self.buffer.states.append(state)
@@ -244,7 +247,7 @@ class PPO:
         # Optimize policy for K epochs
         for _ in range(self.K_epochs):
             # Evaluating old actions and values
-            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions)
+            logprobs, state_values, dist_entropy = self.policy_.evaluate(old_states, old_actions)
 
             # match state_values tensor dimensions with rewards tensor
             state_values = torch.squeeze(state_values)
@@ -266,7 +269,7 @@ class PPO:
             self.optimizer.step()
 
         # Copy new weights into old policy
-        self.policy_old.load_state_dict(self.policy.state_dict())
+        self.policy_old.load_state_dict(self.policy_.state_dict())
 
         # clear buffer
         self.buffer.clear()
@@ -276,7 +279,7 @@ class PPO:
 
     def load(self, checkpoint_path):
         self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
-        self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
+        self.policy_.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
 
     def record(self, tuple):
         ppo.buffer.rewards.append(tuple[0])
@@ -286,24 +289,24 @@ if __name__ == '__main__':
     problem = 'CartPole-v1'
     env = gym.make(problem)
     config = {
-        'actor_lr': 0.0001,
-        'critic_lr': 0.0002,
-        'subgoal_shape': 1,
-        'action_shape': env.action_space.n,
-        'obs_shape': env.observation_space.shape,
-        "lambda": 0.95,
+        'actor_lr': 0.001,
+        'critic_lr': 0.002,
+        'action_dim': env.action_space,
+        'state_dim': env.observation_space,
         "gamma": 0.99,
-        "clip_param": 0.2,
+        "eps_clip": 0.2,
+        'K_epochs': 10,
+        'has_continuous_action_space':False,
+        'has_continuous_state_space':True,
+        'action_std_init':0.6,
     }
-    subgoal_shape = 64
-    ppo = PPO(env.observation_space.shape[0]+subgoal_shape, env.action_space.n, 0.001, 0.002, 0.99, 10, 0.2, False)
+    ppo = PPO(config)
     # To store reward history of each episode
     ep_reward_list = []
     # To store average reward history of last few episodes
     avg_reward_list = []
 
-    total_episodes = 100
-    subgoal_example = 1
+    total_episodes = 150
     # Takes about 4 min to train
     for ep in range(total_episodes):
 
@@ -314,7 +317,7 @@ if __name__ == '__main__':
             # Uncomment this to see the Actor in action
             # But not in a python notebook.
 
-            action = ppo.policy(torch.concat(prev_state))
+            action = ppo.policy(prev_state)
             # Recieve state and reward from environment.
             state, reward, done, info = env.step(action)
             ppo.record((reward, done))

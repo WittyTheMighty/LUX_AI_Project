@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 
-from ppo import PPO
+from ppo_v2 import PPO
 import torch
 from DDPG import DDPG
 
@@ -48,7 +48,7 @@ class CompositeActorCritic:
                 # The neural network will take the concatenation between both vectors
                 state = next_state
                 features = torch.cat([state,sub_goal])
-                action = self.low_level_agent.policy(features) # TODO : concatenation
+                action = self.low_level_agent.policy_(features) # TODO : concatenation
                 next_state, env_reward,  done, _ = self.env.step(action)
                 #Give reward if agent reaches state
                 internal_reward = self.compute_internal_reward(sub_goal, next_state)
@@ -77,7 +77,7 @@ class CompositeActorCritic:
         sub_goal = self.high_level_agent.policy(observation)
         self.subgoal_unit_tracker[unit_id] = sub_goal
 
-        return self.low_level_agent.policy(sub_goal, observation)
+        return self.low_level_agent.policy_(sub_goal, observation)
 
 
     def observation_to_subgoal(self, observation):
@@ -114,10 +114,10 @@ class CompositeActorCritic:
     def save_checkpoint(self,path):
         self.high_level_agent.actor_model.save(path+"/DDPG-actor")
         self.high_level_agent.critic_model.save(path+"/DDPG-critic")
-        torch.save(self.low_level_agent.policy, path+"/PPO")
+        torch.save(self.low_level_agent.policy_, path + "/PPO")
 
     def load_checkpoint(self, path):
         self.high_level_agent.actor_model.load_model(path + "/DDPG-actor")
         self.high_level_agent.critic_model.load_model(path + "/DDPG-critic")
-        self.low_level_agent.policy.load_state_dict(torch.load(path+"/PPO"))
+        self.low_level_agent.policy_.load_state_dict(torch.load(path + "/PPO"))
 
