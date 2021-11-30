@@ -110,14 +110,14 @@ class ActorCritic(nn.Module):
         raise NotImplementedError
 
     def act(self, state):
-
+        # s = state.clone().reshape(-1, 1)
         if self.has_continuous_action_space:
             action_mean = self.actor(state)
             cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
             dist = MultivariateNormal(action_mean, cov_mat)
         else:
-            if not self.has_continuous_state_space :
-                state = state.reshape(-1, 1) # transpose state vector into
+            if not self.has_continuous_state_space:
+                state = state.reshape(-1,1)
             action_probs = self.actor(state)
             dist = Categorical(action_probs)
 
@@ -127,7 +127,7 @@ class ActorCritic(nn.Module):
         return action.detach(), action_logprob.detach()
 
     def evaluate(self, state, action):
-
+        # s = state.clone().reshape(-1, 1)
         if self.has_continuous_action_space:
             action_mean = self.actor(state)
 
@@ -140,8 +140,8 @@ class ActorCritic(nn.Module):
                 action = action.reshape(-1, self.action_dim)
 
         else:
-            if not self.has_continuous_state_space :
-                state = state.reshape(-1, 1) # transpose state vector into
+            if not self.has_continuous_state_space:
+                state = state.reshape(-1,1)
             action_probs = self.actor(state)
             dist = Categorical(action_probs)
         action_logprobs = dist.log_prob(action)
@@ -229,7 +229,7 @@ class PPO:
 
         else:
             with torch.no_grad():
-                state = torch.FloatTensor([state]).to(device)
+                state = torch.FloatTensor([state]).to(device) # Tensor from list is slow, but from np.array doesnt work
                 action, action_logprob = self.policy_old.act(state)
 
             self.buffer.states.append(state)
@@ -306,13 +306,13 @@ if __name__ == '__main__':
     config = {
         'actor_lr': 0.0003,
         'critic_lr': 0.0005,
-        'action_dim': 2,
-        'state_dim': 4,
+        'action_dim': 4,
+        'state_dim': 1,
         "gamma": 0.99,
         "eps_clip": 0.2,
         'K_epochs': 10,
         'has_continuous_action_space': False,
-        'has_continuous_state_space': True,
+        'has_continuous_state_space': False,
         'action_std_init':0.6,
     }
     ppo = PPO(config)
