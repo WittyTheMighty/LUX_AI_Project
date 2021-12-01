@@ -301,7 +301,7 @@ class PPO:
 
 
 if __name__ == '__main__':
-    env = gym.make('FrozenLake-v1')
+    env = frozen_lake.FrozenLakeEnv(is_slippery=False)
 
     config = {
         'actor_lr': 0.0003,
@@ -321,7 +321,7 @@ if __name__ == '__main__':
     # To store average reward history of last few episodes
     avg_reward_list = []
 
-    total_episodes = 500
+    total_episodes = 3000
     # Takes about 4 min to train
     for ep in range(total_episodes):
 
@@ -331,7 +331,8 @@ if __name__ == '__main__':
         while True:
             # Uncomment this to see the Actor in action
             # But not in a python notebook.
-            # env.render()
+            if ep > 2990:
+                env.render()
             action = ppo.policy(prev_state)
             # Recieve state and reward from environment.
             state, reward, done, info = env.step(action)

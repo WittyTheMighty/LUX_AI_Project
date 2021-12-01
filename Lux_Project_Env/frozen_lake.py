@@ -13,7 +13,10 @@ RIGHT = 2
 UP = 3
 
 MAPS = {
-    "4x4": ["SFFF", "FHFH", "FFFH", "HFFG"],
+    "4x4": ["SFFF",
+            "FHFF",
+            "FFFH",
+            "FFFG"],
     "5x5_easy": ["FFFFG",
                  "F2FFF",
                  "FFFFF",
@@ -222,7 +225,7 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
             self.last_subgoal += 1
             reward = 10.0
         elif newletter == b'G' and self.last_subgoal >= self.total_nb_subgoals:
-            reward = 20.0
+            reward = 100.0
             done = True
         elif newletter == b'H':
             reward = -100
