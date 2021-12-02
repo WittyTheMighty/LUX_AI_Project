@@ -59,11 +59,10 @@ class PrintLayer(nn.Module):
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, has_continuous_action_space,has_continuous_state_space, action_std_init):
+    def __init__(self, state_dim, action_dim, has_continuous_action_space, action_std_init):
         super(ActorCritic, self).__init__()
 
         self.has_continuous_action_space = has_continuous_action_space
-        self.has_continuous_state_space = has_continuous_state_space
         self.state_dim = state_dim
         if has_continuous_action_space:
             self.action_dim = action_dim
@@ -155,7 +154,6 @@ class PPO:
     def __init__(self, config):
         print(config)
         self.has_continuous_action_space = config['has_continuous_action_space']
-        self.has_continuous_state_space = config['has_continuous_state_space']
 
         self.action_std = config['action_std_init'] # default 0.6
 
@@ -171,14 +169,14 @@ class PPO:
         self.state_dim = config['state_dim']
 
         self.policy_ = ActorCritic(self.state_dim, self.action_dim, self.has_continuous_action_space,
-                                   self.has_continuous_state_space,self.action_std).to(device)
+                                   self.action_std).to(device)
         self.optimizer = torch.optim.Adam([
             {'params': self.policy_.actor.parameters(), 'lr': config['actor_lr']},
             {'params': self.policy_.critic.parameters(), 'lr': config['critic_lr']}
         ])
 
         self.policy_old = ActorCritic(self.state_dim, self.action_dim, self.has_continuous_action_space,
-                                      self.has_continuous_state_space, self.action_std).to(device)
+                                       self.action_std).to(device)
         self.policy_old.load_state_dict(self.policy_.state_dict())
 
         self.MseLoss = nn.MSELoss()
@@ -312,7 +310,6 @@ if __name__ == '__main__':
         "eps_clip": 0.2,
         'K_epochs': 10,
         'has_continuous_action_space': False,
-        'has_continuous_state_space': False,
         'action_std_init':0.6,
     }
     ppo = PPO(config)
