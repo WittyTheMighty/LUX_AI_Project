@@ -302,17 +302,17 @@ class PPO:
 
 if __name__ == '__main__':
     env = frozen_lake.FrozenLakeEnv(is_slippery=False)
-
+    #env = gym.make('CartPole-v1')
     config = {
         'actor_lr': 0.0003,
         'critic_lr': 0.0005,
         'action_dim': 4,
-        'state_dim': 1,
+        'state_dim': 2,
         "gamma": 0.99,
         "eps_clip": 0.2,
         'K_epochs': 10,
         'has_continuous_action_space': False,
-        'has_continuous_state_space': False,
+        'has_continuous_state_space': True,
         'action_std_init':0.6,
     }
     ppo = PPO(config)
@@ -321,7 +321,7 @@ if __name__ == '__main__':
     # To store average reward history of last few episodes
     avg_reward_list = []
 
-    total_episodes = 3000
+    total_episodes = 200
     # Takes about 4 min to train
     for ep in range(total_episodes):
 
@@ -333,6 +333,7 @@ if __name__ == '__main__':
             # But not in a python notebook.
             if ep > 2990:
                 env.render()
+            # prev_state = np.array([prev_state], dtype=np.float64)
             action = ppo.policy(prev_state)
             # Recieve state and reward from environment.
             state, reward, done, info = env.step(action)

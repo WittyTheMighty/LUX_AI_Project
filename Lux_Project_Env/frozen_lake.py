@@ -14,8 +14,8 @@ UP = 3
 
 MAPS = {
     "4x4": ["SFFF",
-            "FHFF",
-            "FFFH",
+            "FFFF",
+            "FFFF",
             "FFFG"],
     "5x5_easy": ["FFFFG",
                  "F2FFF",
@@ -206,7 +206,7 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
         self.s = categorical_sample(self.isd, self.np_random)
         self.lastaction = None
         self.last_subgoal = 0
-        return int(self.s)
+        return np.array([self.s, self.s], dtype=np.float)
 
     def step(self, a):
         transitions = self.P[self.s][a]
@@ -215,7 +215,7 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
         r, d = self.reward_function(s)
         self.s = s
         self.lastaction = a
-        return int(s), r, d, {"prob": p}
+        return np.array([s,s], dtype=np.float), r, d, {"prob": p}
 
     def reward_function(self, s):
         row, col = s // self.nrow, s % self.ncol
@@ -228,7 +228,7 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
             reward = 100.0
             done = True
         elif newletter == b'H':
-            reward = -100
+            reward = -100.0
             done = True
         else:
             reward = -1.0
