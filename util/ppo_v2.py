@@ -36,6 +36,7 @@ class RolloutBuffer:
     def __init__(self):
         self.actions = []
         self.states = []
+        self.subgoals = []
         self.logprobs = []
         self.rewards = []
         self.is_terminals = []
@@ -43,27 +44,29 @@ class RolloutBuffer:
     def clear(self):
         del self.actions[:]
         del self.states[:]
+        del self.subgoals[:]
         del self.logprobs[:]
         del self.rewards[:]
         del self.is_terminals[:]
 
-
-class PrintLayer(nn.Module):
-    def __init__(self):
-        super(PrintLayer, self).__init__()
-
-    def forward(self, x):
-        # Do your print / debug stuff here
-        print(x)
-        return x
-
+#
+# class PrintLayer(nn.Module):
+#     def __init__(self):
+#         super(PrintLayer, self).__init__()
+#
+#     def forward(self, x):
+#         # Do your print / debug stuff here
+#         print(x)
+#         return x
+#
 
 class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, has_continuous_action_space, action_std_init):
+    def __init__(self, state_dim, subgoal_dim, action_dim, has_continuous_action_space, action_std_init):
         super(ActorCritic, self).__init__()
 
         self.has_continuous_action_space = has_continuous_action_space
         self.state_dim = state_dim
+        self.subgoal_dim = subgoal_dim
         if has_continuous_action_space:
             self.action_dim = action_dim
             self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
@@ -71,7 +74,7 @@ class ActorCritic(nn.Module):
         # actor
         if has_continuous_action_space:
             self.actor = nn.Sequential(
-                nn.Linear(state_dim, 64),
+                nn.Linear(state_dim+subgoal_dim, 64),
                 nn.Tanh(),
                 nn.Linear(64, 64),
                 nn.Tanh(),
@@ -79,7 +82,7 @@ class ActorCritic(nn.Module):
             )
         else:
             self.actor = nn.Sequential(
-                nn.Linear(state_dim, 64),
+                nn.Linear(state_dim+subgoal_dim, 64),
                 nn.Tanh(),
                 nn.Linear(64, 64),
                 nn.Tanh(),
@@ -89,7 +92,7 @@ class ActorCritic(nn.Module):
 
         # critic
         self.critic = nn.Sequential(
-            nn.Linear(state_dim, 64),
+            nn.Linear(state_dim+subgoal_dim, 64),
             nn.Tanh(),
             nn.Linear(64, 64),
             nn.Tanh(),
@@ -108,16 +111,16 @@ class ActorCritic(nn.Module):
     def forward(self):
         raise NotImplementedError
 
-    def act(self, state):
+    def act(self, state_subgoal):
         # s = state.clone().reshape(-1, 1)
         if self.has_continuous_action_space:
-            action_mean = self.actor(state)
+            action_mean = self.actor(state_subgoal)
             cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
             dist = MultivariateNormal(action_mean, cov_mat)
         else:
-            if self.state_dim == 1:
-                state = state.reshape(-1,1)
-            action_probs = self.actor(state)
+            # if self.state_dim == 1:
+            #     state = state.reshape(-1,1)
+            action_probs = self.actor(state_subgoal)
             dist = Categorical(action_probs)
 
         action = dist.sample()
@@ -125,10 +128,10 @@ class ActorCritic(nn.Module):
 
         return action.detach(), action_logprob.detach()
 
-    def evaluate(self, state, action):
+    def evaluate(self, state_subgoal, action):
         # s = state.clone().reshape(-1, 1)
         if self.has_continuous_action_space:
-            action_mean = self.actor(state)
+            action_mean = self.actor(state_subgoal)
 
             action_var = self.action_var.expand_as(action_mean)
             cov_mat = torch.diag_embed(action_var).to(device)
@@ -139,13 +142,13 @@ class ActorCritic(nn.Module):
                 action = action.reshape(-1, self.action_dim)
 
         else:
-            if self.state_dim == 1:
-                state = state.reshape(-1,self.state_dim)
-            action_probs = self.actor(state)
+            # if self.state_dim == 1:
+            #     state = state.reshape(-1,self.state_dim)
+            action_probs = self.actor(state_subgoal)
             dist = Categorical(action_probs)
         action_logprobs = dist.log_prob(action)
         dist_entropy = dist.entropy()
-        state_values = self.critic(state)
+        state_values = self.critic(state_subgoal)
 
         return action_logprobs, state_values, dist_entropy
 
@@ -157,7 +160,6 @@ class PPO:
 
         self.action_std = config['action_std_init'] # default 0.6
 
-
         self.gamma = config['gamma']
         self.eps_clip = config['eps_clip']
         self.K_epochs = config['K_epochs']
@@ -165,17 +167,17 @@ class PPO:
         self.buffer = RolloutBuffer()
 
         self.action_dim = config['action_dim']
-
+        self.subgoal_dim = config['subgoal_dim']
         self.state_dim = config['state_dim']
 
-        self.policy_ = ActorCritic(self.state_dim, self.action_dim, self.has_continuous_action_space,
+        self.policy_ = ActorCritic(self.state_dim, self.subgoal_dim, self.action_dim, self.has_continuous_action_space,
                                    self.action_std).to(device)
         self.optimizer = torch.optim.Adam([
             {'params': self.policy_.actor.parameters(), 'lr': config['actor_lr']},
             {'params': self.policy_.critic.parameters(), 'lr': config['critic_lr']}
         ])
 
-        self.policy_old = ActorCritic(self.state_dim, self.action_dim, self.has_continuous_action_space,
+        self.policy_old = ActorCritic(self.state_dim, self.subgoal_dim, self.action_dim, self.has_continuous_action_space,
                                        self.action_std).to(device)
         self.policy_old.load_state_dict(self.policy_.state_dict())
 
@@ -211,8 +213,12 @@ class PPO:
 
         print("--------------------------------------------------------------------------------------------")
 
-    def policy(self, state):
-
+    def policy(self, state, subgoal):
+        if self.state_dim == 1:
+            state = [state]
+        if self.subgoal_dim == 1:
+            subgoal = [subgoal]
+        state = np.concatenate([state, subgoal])
         if self.has_continuous_action_space:
             with torch.no_grad():
                 state = torch.FloatTensor(state).to(device)
@@ -227,7 +233,7 @@ class PPO:
 
         else:
             with torch.no_grad():
-                state = torch.FloatTensor([state]).to(device) # Tensor from list is slow, but from np.array doesnt work
+                state = torch.FloatTensor(state).to(device) # Tensor from list is slow, but from np.array doesnt work
                 action, action_logprob = self.policy_old.act(state)
 
             self.buffer.states.append(state)
@@ -305,7 +311,8 @@ if __name__ == '__main__':
         'actor_lr': 0.0003,
         'critic_lr': 0.0005,
         'action_dim': 4,
-        'state_dim': 1,
+        'state_dim': 2,
+        'subgoal_dim': 2,
         "gamma": 0.99,
         "eps_clip": 0.2,
         'K_epochs': 10,
@@ -319,6 +326,7 @@ if __name__ == '__main__':
     avg_reward_list = []
 
     total_episodes = 200
+    subgoal = 1
     # Takes about 4 min to train
     for ep in range(total_episodes):
 
@@ -330,7 +338,7 @@ if __name__ == '__main__':
             # But not in a python notebook.
             if ep > 2990:
                 env.render()
-            action = ppo.policy(prev_state)
+            action = ppo.policy(prev_state, np.random.randint(0,2, 2))
             # Recieve state and reward from environment.
             state, reward, done, info = env.step(action)
             ppo.record((reward, done))
@@ -353,7 +361,7 @@ if __name__ == '__main__':
     env.render()
     episodic_reward = 0
     for _ in range(100):
-        action = ppo.policy(prev_state)
+        action = ppo.policy(prev_state,np.random.randint(0,2, 2))
         # Recieve state and reward from environment.
         state, reward, done, info = env.step(action)
         env.render()

@@ -6,8 +6,6 @@ from ppo_v2 import PPO
 import torch
 from DDPG import DDPG
 
-import zipfile
-
 class CompositeActorCritic:
     """"
     " config: dict with DDPG and PPO parameters
@@ -47,8 +45,8 @@ class CompositeActorCritic:
                 # -Collect research point
                 # The neural network will take the concatenation between both vectors
                 state = next_state
-                features = torch.cat([state,sub_goal])
-                action = self.low_level_agent.policy_(features) # TODO : concatenation
+                features = torch.cat([state, sub_goal])
+                action = self.low_level_agent.policy(features) # TODO : concatenation
                 next_state, env_reward,  done, _ = self.env.step(action)
                 #Give reward if agent reaches state
                 internal_reward = self.compute_internal_reward(sub_goal, next_state)
@@ -58,14 +56,13 @@ class CompositeActorCritic:
                 #
                 self.low_level_agent.record((internal_reward, done))
                 if self.subgoal_reached(next_state) or T > self.step_limit:
-                    if self.sub_goal_reached(next_state):
+                    if self.subgoal_reached(next_state):
                         reward += internal_reward
                     #Not clear what state to store here sL
                     self.high_level_agent.record((next_state, sub_goal, reward, state))
-
+                    s_l = next_state
                     sub_goal = self.high_level_agent.policy(s_l) # noise high policy algo
                     reward = 0
-
 
             self.low_level_agent.learn()
             self.low_level_agent.buffer.clear()
@@ -76,8 +73,8 @@ class CompositeActorCritic:
     def predict(self, observation, unit_id):
         sub_goal = self.high_level_agent.policy(observation)
         self.subgoal_unit_tracker[unit_id] = sub_goal
-
-        return self.low_level_agent.policy_(sub_goal, observation)
+        features = torch.cat([observation, sub_goal])
+        return self.low_level_agent.policy(features)
 
 
     def observation_to_subgoal(self, observation):

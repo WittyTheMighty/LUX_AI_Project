@@ -206,7 +206,7 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
         self.s = categorical_sample(self.isd, self.np_random)
         self.lastaction = None
         self.last_subgoal = 0
-        return self.s
+        return np.array([self.s, self.s], dtype=np.float)
 
     def step(self, a):
         transitions = self.P[self.s][a]
@@ -215,7 +215,7 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
         r, d = self.reward_function(s)
         self.s = s
         self.lastaction = a
-        return s, r, d, {"prob": p}
+        return np.array([s,s], dtype=np.float), r, d, {"prob": p}
 
     def reward_function(self, s):
         row, col = s // self.nrow, s % self.ncol
