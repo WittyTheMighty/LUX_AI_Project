@@ -64,7 +64,7 @@ class ActorCritic(nn.Module):
 
         self.has_continuous_action_space = has_continuous_action_space
         self.has_continuous_state_space = has_continuous_state_space
-
+        self.state_dim = state_dim
         if has_continuous_action_space:
             self.action_dim = action_dim
             self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
@@ -116,7 +116,7 @@ class ActorCritic(nn.Module):
             cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
             dist = MultivariateNormal(action_mean, cov_mat)
         else:
-            if not self.has_continuous_state_space:
+            if self.state_dim == 1:
                 state = state.reshape(-1,1)
             action_probs = self.actor(state)
             dist = Categorical(action_probs)
@@ -140,8 +140,8 @@ class ActorCritic(nn.Module):
                 action = action.reshape(-1, self.action_dim)
 
         else:
-            if not self.has_continuous_state_space:
-                state = state.reshape(-1,1)
+            if self.state_dim == 1:
+                state = state.reshape(-1,self.state_dim)
             action_probs = self.actor(state)
             dist = Categorical(action_probs)
         action_logprobs = dist.log_prob(action)
@@ -307,12 +307,12 @@ if __name__ == '__main__':
         'actor_lr': 0.0003,
         'critic_lr': 0.0005,
         'action_dim': 4,
-        'state_dim': 2,
+        'state_dim': 1,
         "gamma": 0.99,
         "eps_clip": 0.2,
         'K_epochs': 10,
         'has_continuous_action_space': False,
-        'has_continuous_state_space': True,
+        'has_continuous_state_space': False,
         'action_std_init':0.6,
     }
     ppo = PPO(config)
@@ -333,7 +333,6 @@ if __name__ == '__main__':
             # But not in a python notebook.
             if ep > 2990:
                 env.render()
-            # prev_state = np.array([prev_state], dtype=np.float64)
             action = ppo.policy(prev_state)
             # Recieve state and reward from environment.
             state, reward, done, info = env.step(action)
@@ -350,7 +349,7 @@ if __name__ == '__main__':
         ep_reward_list.append(episodic_reward)
         # Mean of last 40 episodes
         avg_reward = np.mean(ep_reward_list[-40:])
-        print("Episode * {} * Avg Reward is ==> {}".format(ep, avg_reward))
+        # print("Episode * {} * Avg Reward is ==> {}".format(ep, avg_reward))
         avg_reward_list.append(avg_reward)
 
     prev_state = env.reset()
