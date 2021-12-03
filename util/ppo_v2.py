@@ -299,9 +299,9 @@ class PPO:
         self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         self.policy_.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
 
-    def record(self, tuple):
-        ppo.buffer.rewards.append(tuple[0])
-        ppo.buffer.is_terminals.append(tuple[1])
+    def record(self, reward, done):
+        ppo.buffer.rewards.append(reward)
+        ppo.buffer.is_terminals.append(done)
 
 
 if __name__ == '__main__':
@@ -311,8 +311,8 @@ if __name__ == '__main__':
         'actor_lr': 0.0003,
         'critic_lr': 0.0005,
         'action_dim': 4,
-        'state_dim': 2,
-        'subgoal_dim': 2,
+        'state_dim': 1,
+        'subgoal_dim': 1,
         "gamma": 0.99,
         "eps_clip": 0.2,
         'K_epochs': 10,
@@ -338,10 +338,10 @@ if __name__ == '__main__':
             # But not in a python notebook.
             if ep > 2990:
                 env.render()
-            action = ppo.policy(prev_state, np.random.randint(0,2, 2))
+            action = ppo.policy(prev_state, np.random.randint(0,2))
             # Recieve state and reward from environment.
             state, reward, done, info = env.step(action)
-            ppo.record((reward, done))
+            ppo.record(reward, done)
             episodic_reward += reward
 
             # End this episode when `done` is True
@@ -361,11 +361,11 @@ if __name__ == '__main__':
     env.render()
     episodic_reward = 0
     for _ in range(100):
-        action = ppo.policy(prev_state,np.random.randint(0,2, 2))
+        action = ppo.policy(prev_state,np.random.randint(0,2))
         # Recieve state and reward from environment.
         state, reward, done, info = env.step(action)
         env.render()
-        ppo.record((reward, done))
+        ppo.record(reward, done)
         episodic_reward += reward
 
         # End this episode when `done` is True

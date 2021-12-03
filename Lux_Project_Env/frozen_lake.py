@@ -148,9 +148,6 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
 
         P = {s: {a: [] for a in range(nA)} for s in range(nS)}
 
-        def to_s(row, col):
-            return row * ncol + col
-
         def inc(row, col, a):
             if a == LEFT:
                 col = max(col - 1, 0)
@@ -164,14 +161,14 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
 
         def update_probability_matrix(row, col, action):
             newrow, newcol = inc(row, col, action)
-            newstate = to_s(newrow, newcol)
+            newstate = self.to_s(newrow, newcol)
             newletter = desc[newrow, newcol]
 
             return newstate
 
         for row in range(nrow):
             for col in range(ncol):
-                s = to_s(row, col)
+                s = self.to_s(row, col)
                 for a in range(4):
                     li = P[s][a]
 
@@ -184,6 +181,9 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
                         li.append((1.0, update_probability_matrix(row, col, a)))
 
         super().__init__(nS, nA, P, isd)
+
+    def to_s(self, row, col):
+        return row * self.ncol + col
 
     def render(self, mode="human"):
         outfile = StringIO() if mode == "ansi" else sys.stdout
@@ -206,7 +206,7 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
         self.s = categorical_sample(self.isd, self.np_random)
         self.lastaction = None
         self.last_subgoal = 0
-        return np.array([self.s, self.s], dtype=np.float)
+        return self.s
 
     def step(self, a):
         transitions = self.P[self.s][a]
@@ -215,10 +215,13 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
         r, d = self.reward_function(s)
         self.s = s
         self.lastaction = a
-        return np.array([s,s], dtype=np.float), r, d, {"prob": p}
+        return s, r, d, {"prob": p}
+
+    def to_coord(self, s):
+        return s // self.nrow, s % self.ncol
 
     def reward_function(self, s):
-        row, col = s // self.nrow, s % self.ncol
+        row, col = self.to_coord(s)
         newletter = self.desc[row, col]
         done = False
         if bytes(str(self.last_subgoal + 1), "utf-8") == newletter:

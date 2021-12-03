@@ -6,11 +6,13 @@ from ppo_v2 import PPO
 import torch
 from DDPG import DDPG
 
+
 class CompositeActorCritic:
     """"
     " config: dict with DDPG and PPO parameters
     """
-    def __init__(self, env,config, mode = "train"):
+
+    def __init__(self, env, config, mode="train"):
 
         self.env = env
         self.low_level_agent = PPO(config["PPO"])
@@ -19,49 +21,50 @@ class CompositeActorCritic:
         self.batch_size = config['batch_size']
 
         self.n_episodes = config["n_episodes"]
-        #Hyperparameter before updating PPO policy
+        # Hyperparameter before updating PPO policy
         self.attempts = config["attempts"]
 
         self.step_limit = config["step_limit"]
 
         self.internal_reward = 0
-        #id : subgoal
+        # id : subgoal
         self.subgoal_unit_tracker = {}
 
     def train_CHAC(self):
 
         for episode in range(self.n_episodes):
             reward = 0
-            #Env reset return the initial environment
+            # Env reset return the initial environment
             next_state = s_l = self.env.reset()
             # [
-            sub_goal = self.high_level_agent.policy(s_l) # Noise already included in DDPG policy
+            sub_goal = self.high_level_agent.policy(s_l)  # Noise already included in DDPG policy
 
-            #Sub-set of episodes
+            # Sub-set of episodes
             for T in range(self.attempts):
-                #Concatenation sub-goal vectors need to represent thing we can control like:
+                # Concatenation sub-goal vectors need to represent thing we can control like:
                 # -Ressources
                 # -Build house
                 # -Collect research point
                 # The neural network will take the concatenation between both vectors
                 state = next_state
-                features = torch.cat([state, sub_goal])
-                action = self.low_level_agent.policy(features) # TODO : concatenation
-                next_state, env_reward,  done, _ = self.env.step(action)
-                #Give reward if agent reaches state
+                action = self.low_level_agent.policy(state, sub_goal)  # TODO : concatenation
+                next_state, env_reward, done, _ = self.env.step(action)
+
+                # Give reward if agent reaches state
                 internal_reward = self.compute_internal_reward(sub_goal, next_state)
 
-                #Reward to setup in luxAi Agent policy
+                # Reward to setup in luxAi Agent policy
                 reward = reward + env_reward
-                #
-                self.low_level_agent.record((internal_reward, done))
-                if self.subgoal_reached(next_state) or T > self.step_limit:
-                    if self.subgoal_reached(next_state):
+
+                self.low_level_agent.record(internal_reward, done)  # agents already stores states and actions
+                if self.subgoal_reached(sub_goal, next_state) or T > self.step_limit:
+                    if self.subgoal_reached(sub_goal, next_state):
                         reward += internal_reward
-                    #Not clear what state to store here sL
-                    self.high_level_agent.record((next_state, sub_goal, reward, state))
+
+                    # Not clear what state to store here sL
+                    self.high_level_agent.record(next_state, sub_goal, reward, state)
                     s_l = next_state
-                    sub_goal = self.high_level_agent.policy(s_l) # noise high policy algo
+                    sub_goal = self.high_level_agent.policy(s_l)  # noise high policy algo
                     reward = 0
 
             self.low_level_agent.learn()
@@ -73,9 +76,7 @@ class CompositeActorCritic:
     def predict(self, observation, unit_id):
         sub_goal = self.high_level_agent.policy(observation)
         self.subgoal_unit_tracker[unit_id] = sub_goal
-        features = torch.cat([observation, sub_goal])
-        return self.low_level_agent.policy(features)
-
+        return self.low_level_agent.policy(observation, sub_goal)
 
     def observation_to_subgoal(self, observation):
         subgoal_observation = np.zeros(5)
@@ -94,12 +95,12 @@ class CompositeActorCritic:
     def subgoal_reached(self, sub_goal, observation):
         sub_goal_observation = self.observation_to_subgoal(observation)
 
-        for goal, obs in zip(sub_goal,sub_goal_observation):
+        for goal, obs in zip(sub_goal, sub_goal_observation):
             if obs <= goal:
                 return False
         return True
 
-    #The internal reward system may be subject to change in
+    # The internal reward system may be subject to change in
     # the luxAI environment
     def compute_internal_reward(self, sub_goal, observation):
         if self.subgoal_reached(sub_goal, observation):
@@ -107,14 +108,12 @@ class CompositeActorCritic:
         else:
             return 0
 
-
-    def save_checkpoint(self,path):
-        self.high_level_agent.actor_model.save(path+"/DDPG-actor")
-        self.high_level_agent.critic_model.save(path+"/DDPG-critic")
+    def save_checkpoint(self, path):
+        self.high_level_agent.actor_model.save(path + "/DDPG-actor")
+        self.high_level_agent.critic_model.save(path + "/DDPG-critic")
         torch.save(self.low_level_agent.policy_, path + "/PPO")
 
     def load_checkpoint(self, path):
         self.high_level_agent.actor_model.load_model(path + "/DDPG-actor")
         self.high_level_agent.critic_model.load_model(path + "/DDPG-critic")
         self.low_level_agent.policy_.load_state_dict(torch.load(path + "/PPO"))
-

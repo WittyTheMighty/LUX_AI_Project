@@ -7,6 +7,9 @@ import tensorflow_probability as tfp
 
 
 # inspired from https://github.com/lubiluk/ddpg
+from Lux_Project_Env import frozen_lake
+
+
 class DDPG:
     def __init__(self, config):
 
@@ -183,7 +186,7 @@ class BufferH:
     # Eager execution is turned on by default in TensorFlow 2. Decorating with tf.function allows
     # TensorFlow to build a static graph out of the logic and computations in our function.
     # This provides a large speed up for blocks of code that contain many small TensorFlow operations such as this one.
-    @tf.function
+    # @tf.function
     def update(
             self, state_batch, subgoal_batch, reward_batch, next_state_batch,
     ):
@@ -240,16 +243,15 @@ def update_target(target_weights, weights, tau):
 
 
 if __name__ == '__main__':
-    problem = 'Taxi-v3'
-    env = gym.make(problem)
+    env = frozen_lake.FrozenLakeEnv(is_slippery=False)
     config = {
         'state_dim':1, # env.observation_space.shape[0],
-        'state_n' : env.observation_space.n,
+        'state_n' : 16,
         'subgoal_dim': 1, #env.action_space.shape[0],
-        'subgoal_n' : env.action_space.n,
+        'subgoal_n' : 4,
         'std_dev':0.2,
-        'critic_lr': 0.002,
-        'actor_lr': 0.001,
+        'critic_lr': 0.0002,
+        'actor_lr': 0.0001,
         'gamma' : 0.99,
         'tau': 0.005,
     }
@@ -259,7 +261,7 @@ if __name__ == '__main__':
     # To store average reward history of last few episodes
     avg_reward_list = []
 
-    total_episodes = 1000
+    total_episodes = 200
 
     # Takes about 4 min to train
     for ep in range(total_episodes):
