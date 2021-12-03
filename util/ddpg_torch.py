@@ -109,8 +109,8 @@ class DDPG:
 
         return np.array([subgoal.detach().numpy()])[0], probs.detach().numpy()
 
-    def record(self, state, subgoal, reward, prev_state):
-        self.buffer.record((prev_state, subgoal, reward, state))
+    def record(self, state, subgoal_probs, reward, prev_state):
+        self.buffer.record((prev_state, subgoal_probs, reward, state))
 
     def learn(self):
         self.buffer.learn()
@@ -166,14 +166,14 @@ class BufferH:
         # Instead of list of tuples as the exp.replay concept go
         # We use different np.arrays for each tuple element
         self.state_buffer = np.zeros((self.buffer_capacity, self.ddpg.state_dim))
-        self.subgoal_buffer = np.zeros((self.buffer_capacity, self.ddpg.subgoal_n))
+        self.subgoal_prob_buffer = np.zeros((self.buffer_capacity, self.ddpg.subgoal_n))
         self.reward_buffer = np.zeros((self.buffer_capacity, 1))
         self.next_state_buffer = np.zeros((self.buffer_capacity, self.ddpg.state_dim))
 
     def clear(self):
         self.buffer_counter = 0
         self.state_buffer = np.zeros((self.buffer_capacity, self.ddpg.state_dim))
-        self.subgoal_buffer = np.zeros((self.buffer_capacity, self.ddpg.subgoal_n))
+        self.subgoal_prob_buffer = np.zeros((self.buffer_capacity, self.ddpg.subgoal_n))
         self.reward_buffer = np.zeros((self.buffer_capacity, 1))
         self.next_state_buffer = np.zeros((self.buffer_capacity, self.ddpg.state_dim))
 
@@ -182,7 +182,7 @@ class BufferH:
         index = self.buffer_counter % self.buffer_capacity
 
         self.state_buffer[index] = obs_tuple[0]
-        self.subgoal_buffer[index] = obs_tuple[1]
+        self.subgoal_prob_buffer[index] = obs_tuple[1]
         self.reward_buffer[index] = obs_tuple[2]
         self.next_state_buffer[index] = obs_tuple[3]
 
@@ -197,25 +197,25 @@ class BufferH:
 
         # Convert to tensors
         state_batch = torch.from_numpy(self.state_buffer[batch_indices]).type(torch.FloatTensor)
-        action_batch = torch.from_numpy(self.subgoal_buffer[batch_indices]).type(torch.FloatTensor)
+        subgoal_prob_batch = torch.from_numpy(self.subgoal_prob_buffer[batch_indices]).type(torch.FloatTensor)
         reward_batch = torch.from_numpy(self.reward_buffer[batch_indices]).type(torch.FloatTensor)
         next_state_batch = torch.from_numpy(self.next_state_buffer[batch_indices]).type(torch.FloatTensor)
 
         # Training and updating Actor & Critic networks.
         # See Pseudo Code.
-        target_actions = self.ddpg.target_actor(next_state_batch).type(torch.FloatTensor)
+        target_subgoal_probs = self.ddpg.target_actor(next_state_batch).type(torch.FloatTensor)
 
-        y = reward_batch + self.ddpg.gamma * self.ddpg.target_critic([next_state_batch, target_actions.detach()])
+        y = reward_batch + self.ddpg.gamma * self.ddpg.target_critic([next_state_batch, target_subgoal_probs.detach()])
 
         self.ddpg.critic_optimizer.zero_grad()
-        critic_value = self.ddpg.critic_model([state_batch, action_batch])
+        critic_value = self.ddpg.critic_model([state_batch, subgoal_prob_batch])
         critic_loss = -F.cross_entropy(critic_value, y.detach())
         critic_loss.backward()
         self.ddpg.critic_optimizer.step()
 
         self.ddpg.actor_optimizer.zero_grad()
-        actions = self.ddpg.actor_model(state_batch).type(torch.FloatTensor)
-        critic_value = self.ddpg.critic_model([state_batch, actions])
+        subgoals_probs = self.ddpg.actor_model(state_batch).type(torch.FloatTensor)
+        critic_value = self.ddpg.critic_model([state_batch, subgoal_probs])
         # Used `-value` as we want to maximize the value given
         # by the critic for our actions
         actor_loss = -critic_value.mean()
