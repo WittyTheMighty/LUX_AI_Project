@@ -1,3 +1,4 @@
+import gym
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
@@ -87,7 +88,7 @@ class DDPG:
         return Actor(self.state_dim, self.subgoal_n)
 
     def get_critic(self):
-        return Critic(self.state_dim, self.subgoal_n)
+        return Critic(self.state_dim, self.subgoal_dim)
 
     # %%
     def policy(self, state):
@@ -95,7 +96,7 @@ class DDPG:
             state = [state]
         state = torch.FloatTensor(state).unsqueeze(dim=0)
         self.actor_model.eval()
-        probs = self.actor_model(state).squeeze()
+        subgoal = self.actor_model(state).squeeze()
         self.actor_model.train()
 
         # noise = torch.from_numpy(self.ou_noise())
@@ -103,11 +104,11 @@ class DDPG:
         # probs = probs + noise
         # We make sure action is within bounds
         # legal_action = probs.clamp(self.lower_bound, self.upper_bound)
-        dist = Categorical(probs)
-        subgoal = dist.sample()
+        # dist = Categorical(probs)
+        # subgoal = dist.sample()
 
 
-        return np.array([subgoal.detach().numpy()])[0], probs.detach().numpy()
+        return np.array([subgoal.detach().numpy()])[0]
 
     def record(self, state, subgoal_probs, reward, prev_state):
         self.buffer.record((prev_state, subgoal_probs, reward, state))
@@ -166,14 +167,14 @@ class BufferH:
         # Instead of list of tuples as the exp.replay concept go
         # We use different np.arrays for each tuple element
         self.state_buffer = np.zeros((self.buffer_capacity, self.ddpg.state_dim))
-        self.subgoal_prob_buffer = np.zeros((self.buffer_capacity, self.ddpg.subgoal_n))
+        self.subgoal_buffer = np.zeros((self.buffer_capacity, self.ddpg.subgoal_dim))
         self.reward_buffer = np.zeros((self.buffer_capacity, 1))
         self.next_state_buffer = np.zeros((self.buffer_capacity, self.ddpg.state_dim))
 
     def clear(self):
         self.buffer_counter = 0
         self.state_buffer = np.zeros((self.buffer_capacity, self.ddpg.state_dim))
-        self.subgoal_prob_buffer = np.zeros((self.buffer_capacity, self.ddpg.subgoal_n))
+        self.subgoal_buffer = np.zeros((self.buffer_capacity, self.ddpg.subgoal_dim))
         self.reward_buffer = np.zeros((self.buffer_capacity, 1))
         self.next_state_buffer = np.zeros((self.buffer_capacity, self.ddpg.state_dim))
 
@@ -182,7 +183,7 @@ class BufferH:
         index = self.buffer_counter % self.buffer_capacity
 
         self.state_buffer[index] = obs_tuple[0]
-        self.subgoal_prob_buffer[index] = obs_tuple[1]
+        self.subgoal_buffer[index] = obs_tuple[1]
         self.reward_buffer[index] = obs_tuple[2]
         self.next_state_buffer[index] = obs_tuple[3]
 
@@ -197,28 +198,28 @@ class BufferH:
 
         # Convert to tensors
         state_batch = torch.from_numpy(self.state_buffer[batch_indices]).type(torch.FloatTensor)
-        subgoal_prob_batch = torch.from_numpy(self.subgoal_prob_buffer[batch_indices]).type(torch.FloatTensor)
+        subgoal_prob_batch = torch.from_numpy(self.subgoal_buffer[batch_indices]).type(torch.FloatTensor)
         reward_batch = torch.from_numpy(self.reward_buffer[batch_indices]).type(torch.FloatTensor)
         next_state_batch = torch.from_numpy(self.next_state_buffer[batch_indices]).type(torch.FloatTensor)
 
         # Training and updating Actor & Critic networks.
         # See Pseudo Code.
-        target_subgoal_probs = self.ddpg.target_actor(next_state_batch).type(torch.FloatTensor)
+        target_subgoal = self.ddpg.target_actor(next_state_batch).reshape((-1,1)).type(torch.FloatTensor)
 
-        y = reward_batch + self.ddpg.gamma * self.ddpg.target_critic([next_state_batch, target_subgoal_probs.detach()])
+        y = reward_batch + self.ddpg.gamma * self.ddpg.target_critic([next_state_batch, target_subgoal.detach()])
 
         self.ddpg.critic_optimizer.zero_grad()
         critic_value = self.ddpg.critic_model([state_batch, subgoal_prob_batch])
-        critic_loss = -F.cross_entropy(critic_value, y.detach())
+        critic_loss = F.mse_loss(critic_value, y.detach())
         critic_loss.backward()
         self.ddpg.critic_optimizer.step()
 
         self.ddpg.actor_optimizer.zero_grad()
-        subgoals_probs = self.ddpg.actor_model(state_batch).type(torch.FloatTensor)
+        subgoal_probs = self.ddpg.actor_model(state_batch).reshape((-1,1)).type(torch.FloatTensor)
         critic_value = self.ddpg.critic_model([state_batch, subgoal_probs])
         # Used `-value` as we want to maximize the value given
         # by the critic for our actions
-        actor_loss = -critic_value.mean()
+        actor_loss = -0.5*critic_value.mean()
         actor_loss.backward()
         self.ddpg.actor_optimizer.step()
 
@@ -241,15 +242,17 @@ class Actor(nn.Module):
             nn.ReLU(),
             nn.LayerNorm(512),
             nn.Linear(512, subgoal),
-            nn.Softmax(dim=-1)
+            nn.Identity()
 
         )
 
-        self.model[-2].weight.data.uniform_(-0.003, 0.003)
-        self.model[-2].bias.data.uniform_(-0.003, 0.003)
+        # self.model[-2].weight.data.uniform_(-0.003, 0.003)
+        # self.model[-2].bias.data.uniform_(-0.003, 0.003)
 
     def forward(self, inputs):
-        return self.model(inputs)  # * upper_bound
+        x =  self.model(inputs)  # * upper_bound
+        c = Categorical(x)
+        return c.sample()
 
 
 class Critic(nn.Module):
@@ -268,7 +271,7 @@ class Critic(nn.Module):
         self.action_model = nn.Sequential(
             nn.Linear(subgoal, 32),
             nn.ReLU(),
-            nn.LayerNorm(32)
+            # nn.LayerNorm(32)
         )
 
         self.out_model = nn.Sequential(
@@ -290,14 +293,15 @@ class Critic(nn.Module):
 
 if __name__ == '__main__':
     env = frozen_lake.FrozenLakeEnv(is_slippery=False)
+    # env = gym.make('FrozenLake-v1')
     config = {
         'state_dim': 1,  # env.observation_space.shape[0],
         'state_n': 16,
         'subgoal_dim': 1,  # env.action_space.shape[0],
         'subgoal_n': 4,
         'std_dev': 0.2,
-        'critic_lr': 0.0001,
-        'actor_lr': 0.0001,
+        'critic_lr': 0.02,
+        'actor_lr': 0.01,
         'gamma': 0.99,
         'tau': 0.005,
     }
@@ -307,25 +311,25 @@ if __name__ == '__main__':
     # To store average reward history of last few episodes
     avg_reward_list = []
 
-    total_episodes = 2000
+    total_episodes = 1000
 
     # Takes about 4 min to train
     for ep in range(total_episodes):
 
         prev_state = env.reset()
         episodic_reward = 0
-
+        steps = 0
         while True:
             # Uncomment this to see the Actor in action
             # But not in a python notebook.
             # env.render()
-            subgoal, probs = ddpg.policy(prev_state)
+            subgoal = ddpg.policy(prev_state)
             # Recieve state and reward from environment.
             state, reward, done, info = env.step(subgoal)
             # print(state, reward,done)
-            ddpg.record(state, probs, reward, prev_state)
+            ddpg.record(state, subgoal, reward, prev_state)
             episodic_reward += reward
-
+            steps +=1
             # End this episode when `done` is True
             if done:
                 break
@@ -337,7 +341,7 @@ if __name__ == '__main__':
 
         # Mean of last 40 episodes
         avg_reward = np.mean(ep_reward_list[-40:])
-        print("Episode * {} * Avg Reward is ==> {}".format(ep, avg_reward))
+        print("Episode * {} * Avg Reward is ==> {} * Num of steps * {}".format(ep, avg_reward, steps))
         avg_reward_list.append(avg_reward)
 
     # Plotting graph
@@ -346,3 +350,30 @@ if __name__ == '__main__':
     plt.xlabel("Episode")
     plt.ylabel("Avg. Epsiodic Reward")
     plt.show()
+
+    prev_state = env.reset()
+    env.render()
+    episodic_reward = 0
+    steps = 0
+    while True:
+        # Uncomment this to see the Actor in action
+        # But not in a python notebook.
+        subgoal= ddpg.policy(prev_state)
+        # Recieve state and reward from environment.
+        state, reward, done, info = env.step(subgoal)
+        print(state, reward, done)
+        ddpg.record(state, subgoal, reward, prev_state)
+        episodic_reward += reward
+        steps += 1
+        env.render()
+        # End this episode when `done` is True
+        if done:
+            break
+
+        prev_state = state
+    ep_reward_list.append(episodic_reward)
+
+    # Mean of last 40 episodes
+    avg_reward = np.mean(ep_reward_list[-40:])
+    print("Episode * {} * Avg Reward is ==> {} * Num of steps * {}".format(0, avg_reward, steps))
+    avg_reward_list.append(avg_reward)

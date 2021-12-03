@@ -139,6 +139,7 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
 
         self.total_nb_subgoals = find_nb_subgoals(desc)
         self.last_subgoal = 0
+        self.num_steps = 0
 
         nA = 4
         nS = nrow * ncol
@@ -206,9 +207,11 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
         self.s = categorical_sample(self.isd, self.np_random)
         self.lastaction = None
         self.last_subgoal = 0
+        self.num_steps = 0
         return self.s
 
     def step(self, a):
+        self.num_steps +=1
         transitions = self.P[self.s][a]
         i = categorical_sample([t[0] for t in transitions], self.np_random)
         p, s = transitions[i]
@@ -224,14 +227,17 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
         row, col = self.to_coord(s)
         newletter = self.desc[row, col]
         done = False
-        if bytes(str(self.last_subgoal + 1), "utf-8") == newletter:
-            self.last_subgoal += 1
-            reward = 10.0
-        elif newletter == b'G' and self.last_subgoal >= self.total_nb_subgoals:
+        # if bytes(str(self.last_subgoal + 1), "utf-8") == newletter:
+        #     self.last_subgoal += 1
+        #     reward = 10.0
+        if newletter == b'G':#  and self.last_subgoal >= self.total_nb_subgoals:
             reward = 100.0
             done = True
         elif newletter == b'H':
             reward = -100.0
+            done = True
+        elif self.num_steps > 100:
+            reward = -50.0
             done = True
         else:
             reward = -1.0
