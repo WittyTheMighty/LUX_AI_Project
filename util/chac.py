@@ -2,9 +2,10 @@ import os
 
 import numpy as np
 
-from ppo_v2 import PPO
+from util.ppo_v2 import PPO
 import torch
-from DDPG import DDPG
+# from DDPG import DDPG
+from util.DQN import DQN_Agent
 
 
 class CompositeActorCritic:
@@ -16,7 +17,8 @@ class CompositeActorCritic:
 
         self.env = env
         self.low_level_agent = PPO(config["PPO"])
-        self.high_level_agent = DDPG(config["DDPG"])
+        # self.high_level_agent = DDPG(config["DDPG"])
+        self.high_level_agent = DQN_Agent(config["DQN"])
 
         self.batch_size = config['batch_size']
 
@@ -38,6 +40,8 @@ class CompositeActorCritic:
             next_state = s_l = self.env.reset()
             # [
             sub_goal = self.high_level_agent.policy(s_l)  # Noise already included in DDPG policy
+            current_unit_id = self.env.last_observation_object[0].id
+            self.subgoal_unit_tracker[current_unit_id] = sub_goal
 
             # Sub-set of episodes
             for T in range(self.attempts):
@@ -49,6 +53,12 @@ class CompositeActorCritic:
                 state = next_state
                 action = self.low_level_agent.policy(state, sub_goal)  # TODO : concatenation
                 next_state, env_reward, done, _ = self.env.step(action)
+                current_unit_id = self.env.last_observation_object[0].id
+
+                sub_goal = self.subgoal_unit_tracker.get(current_unit_id)
+                if sub_goal is None:
+                    sub_goal = self.high_level_agent.policy(next_state)
+                    self.subgoal_unit_tracker[current_unit_id] = sub_goal
 
                 # Give reward if agent reaches state
                 internal_reward = self.compute_internal_reward(sub_goal, next_state)
@@ -70,7 +80,7 @@ class CompositeActorCritic:
             self.low_level_agent.learn()
             self.low_level_agent.buffer.clear()
 
-            if self.high_level_agent.buffer.buffer_counter > self.batch_size:
+            if len(self.high_level_agent.experience_replay) > self.batch_size:
                 self.high_level_agent.learn()
 
     def predict(self, observation, unit_id):
@@ -109,11 +119,11 @@ class CompositeActorCritic:
             return 0
 
     def save_checkpoint(self, path):
-        self.high_level_agent.actor_model.save(path + "/DDPG-actor")
-        self.high_level_agent.critic_model.save(path + "/DDPG-critic")
-        torch.save(self.low_level_agent.policy_, path + "/PPO")
+        torch.save(self.high_level_agent.q_net, path + "/DDPG-actor.pt")
+        torch.save(self.high_level_agent.target_net, path + "/DDPG-critic.pt")
+        torch.save(self.low_level_agent.policy_, path + "/PPO.pt")
 
     def load_checkpoint(self, path):
-        self.high_level_agent.actor_model.load_model(path + "/DDPG-actor")
-        self.high_level_agent.critic_model.load_model(path + "/DDPG-critic")
-        self.low_level_agent.policy_.load_state_dict(torch.load(path + "/PPO"))
+        self.high_level_agent.q_net.load_state_dict(torch.load(path + "/DDPG-actor.pt"))
+        self.high_level_agent.target_net.load_state_dict(torch.load(path + "/DDPG-critic.pt"))
+        self.low_level_agent.policy_.load_state_dict(torch.load(path + "/PPO.pt"))
