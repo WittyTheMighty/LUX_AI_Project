@@ -13,7 +13,10 @@ class CompositeActorCritic:
     " config: dict with DDPG and PPO parameters
     """
 
-    def __init__(self, env, config, mode="train"):
+    def __init__(self, env, config, mode="train", use_cuda=False):
+        if use_cuda:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
         self.env = env
         self.low_level_agent = PPO(config["PPO"])
@@ -53,7 +56,13 @@ class CompositeActorCritic:
                 state = next_state
                 action = self.low_level_agent.policy(state, sub_goal)  # TODO : concatenation
                 next_state, env_reward, done, _ = self.env.step(action)
-                current_unit_id = self.env.last_observation_object[0].id
+                if self.env.last_observation_object[0] is None:
+                    current_unit_id = self.env.last_observation_object[1].get_tile_id()
+                else:
+                    current_unit_id = self.env.last_observation_object[0].id
+
+                if done:
+                    next_state = state
 
                 sub_goal = self.subgoal_unit_tracker.get(current_unit_id)
                 if sub_goal is None:
@@ -76,6 +85,9 @@ class CompositeActorCritic:
                     s_l = next_state
                     sub_goal = self.high_level_agent.policy(s_l)  # noise high policy algo
                     reward = 0
+
+                if done:
+                    break
 
             self.low_level_agent.learn()
             self.low_level_agent.buffer.clear()
@@ -119,11 +131,11 @@ class CompositeActorCritic:
             return 0
 
     def save_checkpoint(self, path):
-        torch.save(self.high_level_agent.q_net, path + "/DDPG-actor.pt")
-        torch.save(self.high_level_agent.target_net, path + "/DDPG-critic.pt")
-        torch.save(self.low_level_agent.policy_, path + "/PPO.pt")
+        torch.save(self.high_level_agent.q_net, path + "-DDPG-actor.pt")
+        torch.save(self.high_level_agent.target_net, path + "-DDPG-critic.pt")
+        torch.save(self.low_level_agent.policy_, path + "-PPO.pt")
 
     def load_checkpoint(self, path):
-        self.high_level_agent.q_net.load_state_dict(torch.load(path + "/DDPG-actor.pt"))
-        self.high_level_agent.target_net.load_state_dict(torch.load(path + "/DDPG-critic.pt"))
-        self.low_level_agent.policy_.load_state_dict(torch.load(path + "/PPO.pt"))
+        self.high_level_agent.q_net.load_state_dict(torch.load(path + "-DDPG-actor.pt"))
+        self.high_level_agent.target_net.load_state_dict(torch.load(path + "-DDPG-critic.pt"))
+        self.low_level_agent.policy_.load_state_dict(torch.load(path + "-PPO.pt"))

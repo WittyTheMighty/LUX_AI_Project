@@ -45,7 +45,7 @@ class DQN_Agent:
         model = nn.Sequential(
             nn.Linear(self.state_dim, 64),
             nn.Tanh(),
-            # nn.LSTM(4, 64),
+            # nn.LSTM(4, 64).to(device),
             nn.Linear(64, self.subgoal_dim),
             nn.Identity(),
         )
@@ -60,7 +60,8 @@ class DQN_Agent:
             Qp = self.q_net(torch.from_numpy(state).float())
         Q, A = torch.max(Qp, dim=0)
         A = A if torch.rand(1, ).item() > self.epsilon else torch.randint(0, self.subgoal_dim, (1,))
-        return A.item()
+        # return A.item()  # Only for one action
+        return Qp.detach().cpu().numpy()
 
     def get_q_next(self, state):
         with torch.no_grad():
@@ -77,7 +78,8 @@ class DQN_Agent:
             sample_size = len(self.experience_replay)
         sample = random.sample(self.experience_replay, sample_size)
         s = torch.tensor([exp[0] for exp in sample]).float()
-        a = torch.tensor([exp[1] for exp in sample]).float()
+        # a = torch.tensor([exp[1] for exp in sample]).float()
+        a = None
         rn = torch.tensor([exp[2] for exp in sample]).float()
         sn = torch.tensor([exp[3] for exp in sample]).float()
         return s, a, rn, sn
@@ -85,7 +87,7 @@ class DQN_Agent:
     def learn(self):
 
         for _ in range(self.K):
-            s, a, rn, sn = self.sample_from_experience(sample_size=self.batch_size)
+            s, _, rn, sn = self.sample_from_experience(sample_size=self.batch_size)
             if (self.network_sync_counter == self.network_sync_freq):
                 self.target_net.load_state_dict(self.q_net.state_dict())
                 self.network_sync_counter = 0
@@ -94,6 +96,7 @@ class DQN_Agent:
             if self.state_dim == 1:
                 s = s.reshape((-1,1))
                 sn = sn.reshape((-1,1))
+
             qp = self.q_net(s)
             pred_return, _ = torch.max(qp, dim=1)
 
@@ -107,7 +110,7 @@ class DQN_Agent:
             self.optimizer.step()
 
             self.network_sync_counter += 1
-        agent.discount_epsilon()
+        self.discount_epsilon()
         return
 
 if __name__=='__main__':

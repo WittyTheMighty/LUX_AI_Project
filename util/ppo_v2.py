@@ -233,7 +233,7 @@ class PPO:
 
         else:
             with torch.no_grad():
-                state = torch.FloatTensor(state).to(device) # Tensor from list is slow, but from np.array doesnt work
+                state = torch.FloatTensor(state).to(device)  # Tensor from list is slow, but from np.array doesnt work
                 action, action_logprob = self.policy_old.act(state)
 
             self.buffer.states.append(state)
@@ -300,8 +300,8 @@ class PPO:
         self.policy_.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
 
     def record(self, reward, done):
-        ppo.buffer.rewards.append(reward)
-        ppo.buffer.is_terminals.append(done)
+        self.buffer.rewards.append(reward)
+        self.buffer.is_terminals.append(done)
 
 
 if __name__ == '__main__':

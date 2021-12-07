@@ -596,7 +596,7 @@ class AgentPolicy(AgentWithModel):
                     city_tile = cell.city_tile
                     if city_tile.can_act():
                         obs = self.get_observation(game, None, city_tile, city.team, new_turn)
-                        action_code, _states = self.model.predict(obs, city.id)
+                        action_code, _states = self.model.predict(obs, city_tile.get_tile_id())
                         if action_code is not None:
                             actions.append(
                                 self.action_code_to_action(action_code, game=game, unit=None, city_tile=city_tile,
