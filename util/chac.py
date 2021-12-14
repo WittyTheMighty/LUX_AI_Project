@@ -46,6 +46,7 @@ class CompositeActorCritic:
             sub_goal = self.high_level_agent.policy(s_l)  # Noise already included in DDPG policy
             current_unit_id = self.env.last_observation_object[0].id
             self.subgoal_unit_tracker[current_unit_id] = sub_goal
+            self.subgoal_unit_steps[current_unit_id] = 0
 
             # Sub-set of episodes
             for T in range(self.attempts):
