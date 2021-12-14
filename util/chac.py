@@ -34,6 +34,7 @@ class CompositeActorCritic:
         self.internal_reward = 0
         # id : subgoal
         self.subgoal_unit_tracker = {}
+        self.subgoal_unit_steps = {}
 
     def train_CHAC(self):
 
@@ -96,8 +97,19 @@ class CompositeActorCritic:
                 self.high_level_agent.learn()
 
     def predict(self, observation, unit_id):
-        sub_goal = self.high_level_agent.policy(observation)
-        self.subgoal_unit_tracker[unit_id] = sub_goal
+        sub_goal = self.subgoal_unit_tracker.get(unit_id)
+        if sub_goal is None:
+            sub_goal = self.high_level_agent.policy(observation)
+            self.subgoal_unit_tracker[unit_id] = sub_goal
+            self.subgoal_unit_steps[unit_id] = 0
+        else:
+            self.subgoal_unit_steps[unit_id] += 1
+
+        if self.subgoal_reached(sub_goal, observation) or self.subgoal_unit_steps[unit_id] > self.step_limit:
+            sub_goal = self.high_level_agent.policy(observation)
+            self.subgoal_unit_tracker[unit_id] = sub_goal
+            self.subgoal_unit_steps[unit_id] = 0
+
         return self.low_level_agent.policy(observation, sub_goal)
 
     def observation_to_subgoal(self, observation):
