@@ -69,6 +69,10 @@ class CompositeActorCritic:
                 if sub_goal is None:
                     sub_goal = self.high_level_agent.policy(next_state)
                     self.subgoal_unit_tracker[current_unit_id] = sub_goal
+                    self.subgoal_unit_steps[current_unit_id] = 0
+                else:
+                    self.subgoal_unit_steps[current_unit_id] += 1
+                unit_step = self.subgoal_unit_steps[current_unit_id]
 
                 # Give reward if agent reaches state
                 internal_reward = self.compute_internal_reward(sub_goal, next_state)
@@ -77,14 +81,16 @@ class CompositeActorCritic:
                 reward = reward + env_reward
 
                 self.low_level_agent.record(internal_reward, done)  # agents already stores states and actions
-                if self.subgoal_reached(sub_goal, next_state) or T > self.step_limit:
+                if self.subgoal_reached(sub_goal, next_state) or unit_step > self.step_limit:
                     if self.subgoal_reached(sub_goal, next_state):
                         reward += internal_reward
 
                     # Not clear what state to store here sL
-                    self.high_level_agent.record(next_state, sub_goal, reward, state)
+                    self.high_level_agent.record(state, sub_goal, reward, next_state)
                     s_l = next_state
                     sub_goal = self.high_level_agent.policy(s_l)  # noise high policy algo
+                    self.subgoal_unit_tracker[current_unit_id] = sub_goal
+                    self.subgoal_unit_steps[current_unit_id] = 0
                     reward = 0
 
                 if done:
