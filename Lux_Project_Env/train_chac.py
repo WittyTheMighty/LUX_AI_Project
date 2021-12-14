@@ -189,7 +189,11 @@ def train(args):
     model.load_checkpoint(path=latest_save)
     obs = env.reset()
     for i in range(600):
-        action_code, _states = model.predict(obs, deterministic=True)
+        if env.last_observation_object[0] is None:
+            current_unit_id = env.last_observation_object[1].get_tile_id()
+        else:
+            current_unit_id = env.last_observation_object[0].id
+        action_code = model.predict(obs, current_unit_id)
         obs, rewards, done, info = env.step(action_code)
         if i % 5 == 0:
             print("Turn %i" % i)
