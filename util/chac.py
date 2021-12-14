@@ -136,6 +136,6 @@ class CompositeActorCritic:
         torch.save(self.low_level_agent.policy_, path + "-PPO.pt")
 
     def load_checkpoint(self, path):
-        self.high_level_agent.q_net.load_state_dict(torch.load(path + "-DDPG-actor.pt"))
-        self.high_level_agent.target_net.load_state_dict(torch.load(path + "-DDPG-critic.pt"))
-        self.low_level_agent.policy_.load_state_dict(torch.load(path + "-PPO.pt"))
+        self.high_level_agent.q_net = torch.load(path + "-DDPG-actor.pt")
+        self.high_level_agent.target_net = torch.load(path + "-DDPG-critic.pt")
+        self.low_level_agent.policy_ = torch.load(path + "-PPO.pt")
