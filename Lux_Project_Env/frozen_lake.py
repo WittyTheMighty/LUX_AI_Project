@@ -16,12 +16,12 @@ MAPS = {
     "4x4": ["SFFF",
             "FFFF",
             "FFFF",
-            "FFFG"],
-    "5x5_easy": ["FFFFG",
-                 "F2FFF",
+            "HFFG"],
+    "5x5_easy": ["FHFFG",
                  "FFFFF",
-                 "3FFF1",
-                 "SFFF4"],
+                 "1FFHF",
+                 "FFFF2",
+                 "SFF3F"],
     "8x8": [
         "SFFFFFFF",
         "FFFFFFFF",
@@ -227,14 +227,14 @@ class FrozenLakeEnv(discrete.DiscreteEnv):
         row, col = self.to_coord(s)
         newletter = self.desc[row, col]
         done = False
-        # if bytes(str(self.last_subgoal + 1), "utf-8") == newletter:
-        #     self.last_subgoal += 1
-        #     reward = 10.0
-        if newletter == b'G':#  and self.last_subgoal >= self.total_nb_subgoals:
+        if bytes(str(self.last_subgoal + 1), "utf-8") == newletter:
+            self.last_subgoal += 1
+            reward = 10.0
+        elif newletter == b'G' and self.last_subgoal >= self.total_nb_subgoals:
             reward = 100.0
             done = True
         elif newletter == b'H':
-            reward = -100.0
+            reward = -50.0
             done = True
         elif self.num_steps > 100:
             reward = -50.0

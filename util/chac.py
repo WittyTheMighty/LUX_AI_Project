@@ -43,9 +43,7 @@ class CompositeActorCritic:
             next_state = s_l = self.env.reset()
             # [
             sub_goal = self.high_level_agent.policy(s_l)  # Noise already included in DDPG policy
-            current_unit_id = self.env.last_observation_object[0].id
-            self.subgoal_unit_tracker[current_unit_id] = sub_goal
-
+            steps=  0
             # Sub-set of episodes
             for T in range(self.attempts):
                 # Concatenation sub-goal vectors need to represent thing we can control like:
@@ -56,35 +54,25 @@ class CompositeActorCritic:
                 state = next_state
                 action = self.low_level_agent.policy(state, sub_goal)  # TODO : concatenation
                 next_state, env_reward, done, _ = self.env.step(action)
-                if self.env.last_observation_object[0] is None:
-                    current_unit_id = self.env.last_observation_object[1].get_tile_id()
-                else:
-                    current_unit_id = self.env.last_observation_object[0].id
-
-                if done:
-                    next_state = state
-
-                sub_goal = self.subgoal_unit_tracker.get(current_unit_id)
-                if sub_goal is None:
-                    sub_goal = self.high_level_agent.policy(next_state)
-                    self.subgoal_unit_tracker[current_unit_id] = sub_goal
+                steps += 1
 
                 # Give reward if agent reaches state
                 internal_reward = self.compute_internal_reward(sub_goal, next_state)
-
+                # print('Internal rewards' + str(internal_reward))
                 # Reward to setup in luxAi Agent policy
                 reward = reward + env_reward
-
+                # print('Env reward' + str(reward))
                 self.low_level_agent.record(internal_reward, done)  # agents already stores states and actions
-                if self.subgoal_reached(sub_goal, next_state) or T > self.step_limit:
-                    if self.subgoal_reached(sub_goal, next_state):
-                        reward += internal_reward
+                if self.subgoal_reached(sub_goal, next_state) or steps > self.step_limit:
+                    # if self.subgoal_reached(sub_goal, next_state):
+                    #     reward += internal_reward
 
                     # Not clear what state to store here sL
                     self.high_level_agent.record(next_state, sub_goal, reward, state)
                     s_l = next_state
                     sub_goal = self.high_level_agent.policy(s_l)  # noise high policy algo
                     reward = 0
+                    steps = 0
 
                 if done:
                     break
@@ -94,10 +82,11 @@ class CompositeActorCritic:
 
             if len(self.high_level_agent.experience_replay) > self.batch_size:
                 self.high_level_agent.learn()
+                self.high_level_agent.clear()
 
-    def predict(self, observation, unit_id):
+    def predict(self, observation):
         sub_goal = self.high_level_agent.policy(observation)
-        self.subgoal_unit_tracker[unit_id] = sub_goal
+        print('subgoal',str(sub_goal))
         return self.low_level_agent.policy(observation, sub_goal)
 
     def observation_to_subgoal(self, observation):
@@ -116,7 +105,6 @@ class CompositeActorCritic:
 
     def subgoal_reached(self, sub_goal, observation):
         sub_goal_observation = self.observation_to_subgoal(observation)
-
         for goal, obs in zip(sub_goal, sub_goal_observation):
             if obs <= goal:
                 return False

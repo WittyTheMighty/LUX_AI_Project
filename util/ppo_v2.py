@@ -216,7 +216,7 @@ class PPO:
     def policy(self, state, subgoal):
         if self.state_dim == 1:
             state = [state]
-        if self.subgoal_dim == 1:
+        if type(subgoal) == int:
             subgoal = [subgoal]
         state = np.concatenate([state, subgoal])
         if self.has_continuous_action_space:
@@ -308,16 +308,16 @@ if __name__ == '__main__':
     env = frozen_lake.FrozenLakeEnv(is_slippery=False)
     #env = gym.make('CartPole-v1')
     config = {
-        'actor_lr': 0.0003,
-        'critic_lr': 0.0005,
+        'actor_lr': 0.00001,
+        'critic_lr': 0.00002,
         'action_dim': 4,
         'state_dim': 1,
         'subgoal_dim': 1,
         "gamma": 0.99,
         "eps_clip": 0.2,
-        'K_epochs': 10,
+        'K_epochs': 1,
         'has_continuous_action_space': False,
-        'action_std_init':0.6,
+        'action_std_init': 0.6,
     }
     ppo = PPO(config)
     # To store reward history of each episode
@@ -325,8 +325,7 @@ if __name__ == '__main__':
     # To store average reward history of last few episodes
     avg_reward_list = []
 
-    total_episodes = 200
-    subgoal = 1
+    total_episodes = 10000
     # Takes about 4 min to train
     for ep in range(total_episodes):
 
@@ -336,9 +335,7 @@ if __name__ == '__main__':
         while True:
             # Uncomment this to see the Actor in action
             # But not in a python notebook.
-            if ep > 2990:
-                env.render()
-            action = ppo.policy(prev_state, np.random.randint(0,2))
+            action = ppo.policy(prev_state, 0)
             # Recieve state and reward from environment.
             state, reward, done, info = env.step(action)
             ppo.record(reward, done)
@@ -360,7 +357,7 @@ if __name__ == '__main__':
     prev_state = env.reset()
     env.render()
     episodic_reward = 0
-    for _ in range(100):
+    for _ in range(10):
         action = ppo.policy(prev_state,np.random.randint(0,2))
         # Recieve state and reward from environment.
         state, reward, done, info = env.step(action)

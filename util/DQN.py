@@ -12,7 +12,7 @@ from torch import nn
 
 from Lux_Project_Env import frozen_lake
 
-
+# inspired by https://github.com/mahakal001/reinforcement-learning/tree/master/cartpole-dqn
 class DQN_Agent:
 
     def __init__(self, config):
@@ -34,7 +34,8 @@ class DQN_Agent:
         self.network_sync_freq = config['sync_freq']
         self.network_sync_counter = 0
         self.gamma = torch.tensor(config['gamma']).float()
-        self.experience_replay = deque(maxlen=config['exp_replay_size'])
+        self.exp_replay_size = config['exp_replay_size']
+        self.experience_replay = deque(maxlen=self.exp_replay_size)
         return
 
     def discount_epsilon(self):
@@ -60,8 +61,8 @@ class DQN_Agent:
             Qp = self.q_net(torch.from_numpy(state).float())
         Q, A = torch.max(Qp, dim=0)
         A = A if torch.rand(1, ).item() > self.epsilon else torch.randint(0, self.subgoal_dim, (1,))
-        # return A.item()  # Only for one action
-        return Qp.detach().cpu().numpy()
+        return A.item()  # Only for one action
+        # return Qp.detach().cpu().numpy()
 
     def get_q_next(self, state):
         with torch.no_grad():
@@ -113,6 +114,9 @@ class DQN_Agent:
         self.discount_epsilon()
         return
 
+    def clear(self):
+        self.experience_replay = deque(maxlen=self.exp_replay_size)
+
 if __name__=='__main__':
     # env = gym.make('CartPole-v1')
     env = frozen_lake.FrozenLakeEnv(is_slippery=False)
@@ -120,13 +124,13 @@ if __name__=='__main__':
     config = {
         'state_dim': 1,
         'subgoal_dim': 4,
-        'lr': 5e-3,         # higher lr seems better
+        'lr': 1e-5,         # higher lr seems better
         'sync_freq': 5,
         'exp_replay_size': exp_replay_size,
         'batch_size': 16,
         'epsilon': 1,
-        'epsilon_disc': (1/5000), # around n_episodes / 2 or /3
-        'K': 1,
+        'epsilon_disc': (1/10000), # around n_episodes / 2 or /3
+        'K': 20,
         'gamma': 0.95
     }
     agent = DQN_Agent(config)
@@ -134,7 +138,7 @@ if __name__=='__main__':
     # Main training loop
     losses_list, reward_list, episode_len_list,= [], [], []
     index = 128
-    episodes = 15000
+    episodes = 50000
     avg_reward_list = []
     for i in range(episodes):
         obs, done, losses, ep_len, rew = env.reset(), False, 0, 0, 0
@@ -152,7 +156,7 @@ if __name__=='__main__':
         reward_list.append(rew), episode_len_list.append(ep_len)
         mean = np.round(np.mean(reward_list[:-40]), 2)
         avg_reward_list.append(mean)
-        print(mean)
+        print(i,mean)
 
     # Plotting graph
     # Episodes versus Avg. Rewards

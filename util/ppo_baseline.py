@@ -4,11 +4,11 @@ from stable_baselines3 import PPO
 import Lux_Project_Env.frozen_lake as fl
 
 if __name__ == '__main__':
-    env = fl.FrozenLakeEnv(is_slippery=False)
+    env = fl.FrozenLakeEnv(map_name='5x5_easy',is_slippery=False)
     model = PPO('MlpPolicy', env, verbose=1)
     # model = PPO.load('./model.zip')
     # model.set_env(env)
-    model.learn(total_timesteps=10000)
+    model.learn(total_timesteps=200000)
     model.save('./model.zip')
 
     obs = env.reset()
